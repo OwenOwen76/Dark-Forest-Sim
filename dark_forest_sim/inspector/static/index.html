@@ -1,0 +1,999 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dark Forest Inspector</title>
+
+<style>
+:root {
+    color-scheme: dark;
+    --background: #101216;
+    --panel: #181c22;
+    --panel-header: #20252d;
+    --border: #303741;
+    --text: #e5e9f0;
+    --muted: #929ba8;
+    --accent: #78a9ff;
+    --green: #65c995;
+    --purple: #c29bff;
+    --orange: #e6ad72;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    height: 100vh;
+    overflow: hidden;
+    background: var(--background);
+    color: var(--text);
+    font-family: Inter, system-ui, sans-serif;
+}
+
+header {
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 18px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+}
+
+.brand {
+    font-size: 14px;
+    font-weight: 650;
+    letter-spacing: 0.3px;
+}
+
+.connection {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #d36b6b;
+}
+
+.indicator.connected {
+    background: var(--green);
+}
+
+.workspace {
+    height: calc(100vh - 88px);
+    display: grid;
+    grid-template-columns: minmax(250px, 1.4fr) 5px minmax(220px, 1fr);
+    grid-template-rows: minmax(180px, 1fr) 5px minmax(160px, 0.8fr);
+    padding: 8px;
+    gap: 0;
+}
+
+.panel {
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+}
+
+.panel-header {
+    height: 38px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 12px;
+    background: var(--panel-header);
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.panel-subtitle {
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 400;
+}
+
+.panel-content {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 12px;
+}
+
+#activity {
+    grid-column: 1;
+    grid-row: 1;
+}
+
+#civilizations {
+    grid-column: 3;
+    grid-row: 1;
+}
+
+#information {
+    grid-column: 1;
+    grid-row: 3;
+}
+
+#files {
+    grid-column: 3;
+    grid-row: 3;
+}
+
+.divider {
+    background: transparent;
+    position: relative;
+    z-index: 5;
+}
+
+.divider:hover,
+.divider.dragging {
+    background: var(--accent);
+}
+
+.divider.vertical {
+    grid-column: 2;
+    grid-row: 1 / 4;
+    cursor: col-resize;
+}
+
+.divider.horizontal {
+    grid-column: 1 / 4;
+    grid-row: 2;
+    cursor: row-resize;
+}
+
+.placeholder {
+    height: 100%;
+    display: grid;
+    place-items: center;
+    color: var(--muted);
+    font-size: 12px;
+    text-align: center;
+}
+
+.placeholder span {
+    display: block;
+    margin-top: 6px;
+    font-size: 11px;
+    opacity: 0.7;
+}
+
+.event {
+    margin-bottom: 12px;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    overflow: hidden;
+}
+
+.event-header {
+    padding: 7px 10px;
+    background: #20252d;
+    color: var(--muted);
+    font-size: 11px;
+    display: flex;
+    justify-content: space-between;
+}
+
+.event-body {
+    padding: 10px;
+    font-size: 13px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.event.reasoning .event-header {
+    color: var(--purple);
+}
+
+.event.tool .event-header {
+    color: var(--orange);
+}
+
+.event.response .event-header {
+    color: var(--green);
+}
+
+.event.system .event-header {
+    color: var(--accent);
+}
+
+.event-body pre {
+    margin: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font: inherit;
+}
+
+.activity-toolbar {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+button {
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: #292f38;
+    color: var(--text);
+    padding: 5px 9px;
+    font-size: 11px;
+    cursor: pointer;
+}
+
+button:hover {
+    background: #343c48;
+}
+
+.file-controls {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 10px;
+}
+
+input {
+    min-width: 0;
+    flex: 1;
+    background: #101419;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 7px;
+    color: var(--text);
+    font-size: 12px;
+}
+
+#file-content {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    white-space: pre;
+    overflow: auto;
+}
+
+
+
+.tabs {
+    height: 40px;
+    display: flex;
+    align-items: stretch;
+    gap: 4px;
+    padding: 4px 8px 0;
+    background: var(--background);
+    border-bottom: 1px solid var(--border);
+}
+
+.tab-button {
+    min-width: 105px;
+    border: 1px solid transparent;
+    border-bottom: 0;
+    border-radius: 5px 5px 0 0;
+    background: transparent;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.tab-button.active {
+    background: var(--panel);
+    border-color: var(--border);
+    color: var(--text);
+}
+
+#dashboard-view, #narrator-view {
+    height: calc(100vh - 88px);
+}
+
+#narrator-view {
+    display: none;
+    padding: 10px;
+    gap: 10px;
+    grid-template-columns: minmax(210px, 0.8fr) minmax(300px, 1.4fr) minmax(260px, 1fr);
+    background: var(--background);
+}
+
+.narrator-panel {
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+}
+
+.narrator-panel-header {
+    min-height: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 12px;
+    background: var(--panel-header);
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.narrator-panel-content {
+    min-height: 0;
+    flex: 1;
+    overflow: auto;
+    padding: 10px;
+}
+
+.toolbox-group { margin-bottom: 14px; }
+.toolbox-title {
+    margin: 4px 0 7px;
+    color: var(--muted);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .7px;
+    text-transform: uppercase;
+}
+
+.tool-item {
+    width: 100%;
+    display: block;
+    margin: 3px 0;
+    padding: 8px;
+    text-align: left;
+    background: #15191f;
+    border-color: transparent;
+}
+.tool-item.selected { border-color: var(--accent); background: #202a38; }
+.tool-item small { display: block; margin-top: 4px; color: var(--muted); font-size: 10px; font-weight: 400; }
+
+#tool-description, #tool-result, #narrator-state {
+    font-size: 12px;
+    line-height: 1.55;
+    overflow-wrap: anywhere;
+}
+
+#tool-form { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+.tool-field { display: flex; flex-direction: column; gap: 5px; }
+.tool-field label { color: var(--muted); font-size: 11px; }
+.tool-field input, .tool-field textarea {
+    width: 100%;
+    flex: none;
+    background: #101419;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 8px;
+    color: var(--text);
+    font: 12px "JetBrains Mono", monospace;
+}
+.tool-field textarea { min-height: 72px; resize: vertical; }
+.tool-actions { display: flex; gap: 8px; margin-top: 12px; }
+.primary-button { background: #29466b; border-color: #456b9b; }
+#tool-result { white-space: pre-wrap; font-family: "JetBrains Mono", monospace; }
+.state-row { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
+.state-row span:first-child { color: var(--muted); }
+.muted-note { color: var(--muted); font-size: 11px; line-height: 1.5; }
+
+@media (max-width: 850px) {
+    #narrator-view { grid-template-columns: minmax(170px, .8fr) minmax(240px, 1.2fr); overflow: auto; }
+    #narrator-state-panel { grid-column: 1 / -1; min-height: 180px; }
+}
+@media (max-width: 600px) {
+    #narrator-view { display: none; grid-template-columns: minmax(0, 1fr); overflow: auto; }
+    #narrator-state-panel { grid-column: 1; }
+    .narrator-panel { min-height: 220px; }
+}
+
+@media (max-width: 700px) {
+    .workspace {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-rows: repeat(4, minmax(180px, 1fr));
+        overflow: auto;
+    }
+
+    .panel {
+        grid-column: 1 !important;
+        grid-row: auto !important;
+    }
+
+    .divider {
+        display: none;
+    }
+}
+
+display: none;
+padding: 10px;
+gap: 10px;
+grid-template-columns: minmax(210px, 0.8fr) minmax(300px, 1.4fr) minmax(260px, 1fr);
+background: var(--background);
+}
+
+.narrator-panel {
+min-width: 0;
+min-height: 0;
+display: flex;
+flex-direction: column;
+overflow: hidden;
+background: var(--panel);
+border: 1px solid var(--border);
+border-radius: 6px;
+}
+
+.narrator-panel-header {
+min-height: 38px;
+display: flex;
+align-items: center;
+justify-content: space-between;
+padding: 0 12px;
+background: var(--panel-header);
+border-bottom: 1px solid var(--border);
+font-size: 12px;
+font-weight: 600;
+}
+
+.narrator-panel-content {
+min-height: 0;
+flex: 1;
+overflow: auto;
+padding: 10px;
+}
+
+.toolbox-group { margin-bottom: 14px; }
+.toolbox-title {
+margin: 4px 0 7px;
+color: var(--muted);
+font-size: 10px;
+font-weight: 700;
+letter-spacing: .7px;
+text-transform: uppercase;
+}
+
+.tool-item {
+width: 100%;
+display: block;
+margin: 3px 0;
+padding: 8px;
+text-align: left;
+background: #15191f;
+border-color: transparent;
+}
+.tool-item.selected { border-color: var(--accent); background: #202a38; }
+.tool-item small { display: block; margin-top: 4px; color: var(--muted); font-size: 10px; font-weight: 400; }
+
+#tool-description, #tool-result, #narrator-state {
+font-size: 12px;
+line-height: 1.55;
+overflow-wrap: anywhere;
+}
+
+#tool-form { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+.tool-field { display: flex; flex-direction: column; gap: 5px; }
+.tool-field label { color: var(--muted); font-size: 11px; }
+.tool-field input, .tool-field textarea {
+width: 100%;
+flex: none;
+background: #101419;
+border: 1px solid var(--border);
+border-radius: 4px;
+padding: 8px;
+color: var(--text);
+font: 12px "JetBrains Mono", monospace;
+}
+.tool-field textarea { min-height: 72px; resize: vertical; }
+.tool-actions { display: flex; gap: 8px; margin-top: 12px; }
+.primary-button { background: #29466b; border-color: #456b9b; }
+#tool-result { white-space: pre-wrap; font-family: "JetBrains Mono", monospace; }
+.state-row { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
+.state-row span:first-child { color: var(--muted); }
+.muted-note { color: var(--muted); font-size: 11px; line-height: 1.5; }
+
+@media (max-width: 850px) {
+#narrator-view { grid-template-columns: minmax(170px, .8fr) minmax(240px, 1.2fr); overflow: auto; }
+#narrator-state-panel { grid-column: 1 / -1; min-height: 180px; }
+}
+@media (max-width: 600px) {
+#narrator-view { display: none; grid-template-columns: minmax(0, 1fr); overflow: auto; }
+#narrator-state-panel { grid-column: 1; }
+.narrator-panel { min-height: 220px; }
+}
+
+@media (max-width: 700px) {
+.workspace {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: repeat(4, minmax(180px, 1fr));
+    overflow: auto;
+}
+
+.panel {
+    grid-column: 1 !important;
+    grid-row: auto !important;
+}
+
+.divider {
+    display: none;
+}
+}
+</style>
+</head>
+
+<body>
+
+<header>
+<div class="brand">DARK FOREST <span style="color:var(--muted)">/ INSPECTOR</span></div>
+<div class="connection">
+    <div class="indicator" id="connection-indicator"></div>
+    <span id="connection-status">Connecting...</span>
+</div>
+</header>
+
+<nav class="tabs" aria-label="Main views">
+<button class="tab-button active" id="dashboard-tab" onclick="showView('dashboard')">Simulation</button>
+<button class="tab-button" id="narrator-tab" onclick="showView('narrator')">Narrator</button>
+</nav>
+
+<div id="dashboard-view">
+<main class="workspace" id="workspace">
+
+<section class="panel" id="activity">
+    <div class="panel-header">
+        <span>Model Activity</span>
+        <div class="activity-toolbar">
+            <span class="panel-subtitle" id="generation-status">Idle</span>
+            <button onclick="clearActivity()">Clear</button>
+        </div>
+    </div>
+    <div class="panel-content" id="activity-content">
+        <div class="placeholder">
+            <div>
+                Waiting for model activity
+                <span>Reasoning, responses and tool calls will appear here.</span>
+            </div>
+        </div>
+    </div>
+</section>
+
+<div class="divider vertical" id="vertical-divider"></div>
+
+<section class="panel" id="civilizations">
+    <div class="panel-header">
+        <span>Civilization Status</span>
+        <span class="panel-subtitle">Not connected</span>
+    </div>
+    <div class="panel-content">
+        <div class="placeholder">
+            <div>
+                Civilization monitoring
+                <span>Simulation data will appear here.</span>
+            </div>
+        </div>
+    </div>
+</section>
+
+<div class="divider horizontal" id="horizontal-divider"></div>
+
+<section class="panel" id="information">
+    <div class="panel-header">
+        <span>General Information</span>
+        <span class="panel-subtitle">Placeholder</span>
+    </div>
+    <div class="panel-content">
+        <div class="placeholder">
+            <div>
+                General information
+                <span>Reserved for future simulation information.</span>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="panel" id="files">
+    <div class="panel-header">
+        <span>File Viewer</span>
+        <span class="panel-subtitle">Read only</span>
+    </div>
+    <div class="panel-content">
+        <div class="file-controls">
+            <input id="file-path" placeholder="File path relative to project root">
+            <button onclick="loadFile()">Open</button>
+        </div>
+        <div id="file-content" class="placeholder">
+            Select a file to inspect.
+        </div>
+    </div>
+</section>
+
+</main>
+</div>
+
+<section id="narrator-view">
+<section class="narrator-panel">
+    <div class="narrator-panel-header">
+        <span>Toolboxes</span>
+        <button onclick="loadNarratorTools()">Refresh</button>
+    </div>
+    <div class="narrator-panel-content" id="tool-list">
+        <div class="placeholder">Loading narrator tools...</div>
+    </div>
+</section>
+
+<section class="narrator-panel">
+    <div class="narrator-panel-header">
+        <span id="selected-tool-title">Tool details</span>
+        <span class="panel-subtitle" id="selected-tool-category"></span>
+    </div>
+    <div class="narrator-panel-content">
+        <div id="tool-description" class="muted-note">Select a tool to inspect its description and parameters.</div>
+        <form id="tool-form" onsubmit="executeSelectedTool(event)"></form>
+        <div class="tool-actions">
+            <button class="primary-button" id="execute-tool" disabled onclick="document.getElementById('tool-form').requestSubmit()">Execute tool</button>
+        </div>
+        <h4 style="font-size:11px;margin:20px 0 8px">Execution result</h4>
+        <div id="tool-result" class="muted-note">No tool has been executed.</div>
+    </div>
+</section>
+
+<section class="narrator-panel" id="narrator-state-panel">
+    <div class="narrator-panel-header">
+        <span>Universe State</span>
+        <button onclick="loadNarratorState()">Refresh</button>
+    </div>
+    <div class="narrator-panel-content" id="narrator-state">
+        <div class="placeholder">Loading simulation state...</div>
+    </div>
+</section>
+</section>
+
+<script>
+const activity = document.getElementById("activity-content");
+const generationStatus = document.getElementById("generation-status");
+
+let activeRequest = null;
+
+/*
+* Store rendered elements by request and message type.
+* This allows incoming tokens to append to existing messages.
+*/
+const messageElements = new Map();
+
+function getMessageKey(id, type) {
+return `${id}:${type}`;
+}
+
+function createEvent(type, title, content, id) {
+if (activity.querySelector(".placeholder")) {
+    activity.innerHTML = "";
+}
+
+const event = document.createElement("div");
+event.className = `event ${type}`;
+
+const header = document.createElement("div");
+header.className = "event-header";
+header.textContent = title;
+
+const body = document.createElement("div");
+body.className = "event-body";
+
+const pre = document.createElement("pre");
+pre.textContent = content || "";
+
+body.appendChild(pre);
+event.append(header, body);
+activity.appendChild(event);
+
+messageElements.set(getMessageKey(id, type), pre);
+
+activity.scrollTop = activity.scrollHeight;
+
+return pre;
+}
+
+function appendMessage(type, title, content, id) {
+if (!content) return;
+
+const key = getMessageKey(id, type);
+let element = messageElements.get(key);
+
+if (!element) {
+    element = createEvent(type, title, "", id);
+}
+
+element.textContent += content;
+
+activity.scrollTop = activity.scrollHeight;
+}
+
+function addSystemEvent(title, content, id) {
+    createEvent("system", title, content, id);
+}
+
+function clearActivity() {
+    activity.innerHTML = `
+        <div class="placeholder">
+            <div>Waiting for model activity</div>
+        </div>`;
+
+    messageElements.clear();
+    activeRequest = null;
+}
+
+const events = new EventSource("/events");
+
+events.onopen = () => {
+    document.getElementById("connection-indicator").classList.add("connected");
+    document.getElementById("connection-status").textContent = "Connected";
+};
+
+events.onerror = () => {
+    document.getElementById("connection-indicator").classList.remove("connected");
+    document.getElementById("connection-status").textContent = "Disconnected";
+};
+
+const workspace = document.getElementById("workspace");
+const verticalDivider = document.getElementById("vertical-divider");
+const horizontalDivider = document.getElementById("horizontal-divider");
+
+let dragging = null;
+
+verticalDivider.addEventListener("pointerdown", (event) => {
+    dragging = "vertical";
+    verticalDivider.setPointerCapture(event.pointerId);
+    verticalDivider.classList.add("dragging");
+});
+
+horizontalDivider.addEventListener("pointerdown", (event) => {
+    dragging = "horizontal";
+    horizontalDivider.setPointerCapture(event.pointerId);
+    horizontalDivider.classList.add("dragging");
+});
+
+window.addEventListener("pointermove", (event) => {
+    if (!dragging) return;
+
+    const rect = workspace.getBoundingClientRect();
+
+    if (dragging === "vertical") {
+        const ratio = (event.clientX - rect.left) / rect.width;
+        const left = Math.max(0.2, Math.min(0.8, ratio));
+        workspace.style.gridTemplateColumns =
+            `minmax(0, ${left}fr) 5px minmax(0, ${1-left}fr)`;
+    }
+
+    if (dragging === "horizontal") {
+        const ratio = (event.clientY - rect.top) / rect.height;
+        const top = Math.max(0.2, Math.min(0.8, ratio));
+        workspace.style.gridTemplateRows =
+            `minmax(0, ${top}fr) 5px minmax(0, ${1-top}fr)`;
+    }
+});
+
+window.addEventListener("pointerup", () => {
+    dragging = null;
+    verticalDivider.classList.remove("dragging");
+    horizontalDivider.classList.remove("dragging");
+});
+
+
+async function loadFile() {
+    const path = document.getElementById("file-path").value.trim();
+    const output = document.getElementById("file-content");
+
+    if (!path) return;
+
+    output.textContent = "Loading...";
+
+    try {
+        const response = await fetch("/api/file?path=" + encodeURIComponent(path));
+
+        if (!response.ok) {
+            throw new Error(await response.text());
+        }
+
+        output.textContent = await response.text();
+    } catch (error) {
+        output.textContent = "Unable to load file: " + error.message;
+    }
+}
+
+// Narrator console: this UI calls the Python toolbox API; it does not
+// implement simulation mechanics or invoke the LLM directly.
+let narratorTools = [];
+let selectedTool = null;
+
+function showView(view) {
+    const dashboard = view === "dashboard";
+    document.getElementById("dashboard-view").style.display = dashboard ? "block" : "none";
+    document.getElementById("narrator-view").style.display = dashboard ? "none" : "grid";
+    document.getElementById("dashboard-tab").classList.toggle("active", dashboard);
+    document.getElementById("narrator-tab").classList.toggle("active", !dashboard);
+    if (!dashboard) {
+        loadNarratorTools();
+        loadNarratorState();
+    }
+}
+
+async function narratorRequest(path, options = {}) {
+    const response = await fetch(path, {
+        headers: { "Content-Type": "application/json" },
+        ...options,
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(body.detail || response.statusText);
+    return body;
+}
+
+async function loadNarratorTools() {
+    const list = document.getElementById("tool-list");
+    list.textContent = "Loading tools...";
+    try {
+        const body = await narratorRequest("/api/narrator/tools");
+        narratorTools = body.tools || [];
+        renderToolList();
+    } catch (error) {
+        list.textContent = "Unable to load tools: " + error.message;
+    }
+}
+
+function renderToolList() {
+    const list = document.getElementById("tool-list");
+    list.innerHTML = "";
+    const groups = [
+        ["world", "World Modification"],
+        ["data", "Mathematics & Data"],
+    ];
+    for (const [category, title] of groups) {
+        const tools = narratorTools.filter(tool => tool.category === category);
+        const group = document.createElement("div");
+        group.className = "toolbox-group";
+        const heading = document.createElement("div");
+        heading.className = "toolbox-title";
+        heading.textContent = title;
+        group.appendChild(heading);
+        for (const tool of tools) {
+            const button = document.createElement("button");
+            button.className = "tool-item" + (selectedTool?.name === tool.name ? " selected" : "");
+            button.textContent = tool.name;
+            const description = document.createElement("small");
+            description.textContent = tool.description;
+            button.appendChild(description);
+            button.addEventListener("click", () => selectTool(tool));
+            group.appendChild(button);
+        }
+        list.appendChild(group);
+    }
+    if (!narratorTools.length) list.textContent = "No tools are registered.";
+    if (selectedTool) {
+        const refreshed = narratorTools.find(tool => tool.name === selectedTool.name);
+        if (refreshed) selectTool(refreshed);
+    }
+}
+
+function selectTool(tool) {
+    selectedTool = tool;
+    document.getElementById("selected-tool-title").textContent = tool.name;
+    document.getElementById("selected-tool-category").textContent = tool.category === "world" ? "World Modification" : "Mathematics & Data";
+    document.getElementById("tool-description").textContent = tool.description;
+    document.getElementById("execute-tool").disabled = false;
+    renderToolListSelection();
+
+    const form = document.getElementById("tool-form");
+    form.innerHTML = "";
+    const schema = tool.parameters || {};
+    const properties = schema.properties || {};
+    const required = schema.required || [];
+    for (const [name, definition] of Object.entries(properties)) {
+        const wrapper = document.createElement("div");
+        wrapper.className = "tool-field";
+        const label = document.createElement("label");
+        label.textContent = name + (required.includes(name) ? " *" : "");
+        label.htmlFor = "tool-param-" + name;
+        const input = definition.type === "array" || definition.type === "object"
+            ? document.createElement("textarea")
+            : document.createElement("input");
+        input.id = label.htmlFor;
+        input.name = name;
+        input.dataset.type = definition.type || "string";
+        input.placeholder = definition.type === "array" ? '["civ-a", "civ-b"]' : (definition.type === "object" ? "{}" : definition.type);
+        if (required.includes(name)) input.required = true;
+        if (definition.type === "integer" || definition.type === "number") input.type = "number";
+        if (definition.type === "integer") input.step = "1";
+        if (definition.type === "number") input.step = "any";
+        if (definition.type === "boolean") {
+            input.type = "checkbox";
+            input.checked = false;
+        }
+        wrapper.append(label, input);
+        form.appendChild(wrapper);
+    }
+    document.getElementById("tool-result").textContent = "Ready to execute " + tool.name + ".";
+}
+
+function renderToolListSelection() {
+    document.querySelectorAll(".tool-item").forEach(button => {
+        button.classList.toggle("selected", button.firstChild.textContent === selectedTool?.name);
+    });
+}
+
+async function executeSelectedTool(event) {
+    event.preventDefault();
+    if (!selectedTool) return;
+    const args = {};
+    for (const input of document.getElementById("tool-form").elements) {
+        if (!input.name) continue;
+        if (input.type === "checkbox") {
+            args[input.name] = input.checked;
+            continue;
+        }
+        if (input.value === "") continue;
+        const type = input.dataset.type;
+        if (type === "integer") args[input.name] = Number.parseInt(input.value, 10);
+        else if (type === "number") args[input.name] = Number(input.value);
+        else if (type === "array" || type === "object") {
+            try { args[input.name] = JSON.parse(input.value); }
+            catch { document.getElementById("tool-result").textContent = `Invalid JSON for ${input.name}.`; return; }
+        } else args[input.name] = input.value;
+    }
+
+    const output = document.getElementById("tool-result");
+    const button = document.getElementById("execute-tool");
+    button.disabled = true;
+    output.textContent = "Executing...";
+    try {
+        const result = await narratorRequest("/api/narrator/call", {
+            method: "POST",
+            body: JSON.stringify({ tool: selectedTool.name, arguments: args }),
+        });
+        output.textContent = JSON.stringify(result, null, 2);
+        await loadNarratorState();
+    } catch (error) {
+        output.textContent = "Request failed: " + error.message;
+    } finally {
+        button.disabled = false;
+    }
+}
+
+async function loadNarratorState() {
+    const output = document.getElementById("narrator-state");
+    try {
+        const state = await narratorRequest("/api/narrator/state");
+        output.innerHTML = "";
+        const rows = [
+            ["Universe time", state.current_time],
+            ["Civilizations", state.civilization_count],
+            ["Events", state.event_count],
+            ["Deliveries", state.delivery_count],
+            ["Pending deliveries", state.pending_deliveries],
+        ];
+        for (const [label, value] of rows) {
+            const row = document.createElement("div");
+            row.className = "state-row";
+            const name = document.createElement("span");
+            name.textContent = label;
+            const amount = document.createElement("strong");
+            amount.textContent = value ?? "—";
+            row.append(name, amount);
+            output.appendChild(row);
+        }
+        const note = document.createElement("p");
+        note.className = "muted-note";
+        note.textContent = "This is a live summary from the Python simulation runtime.";
+        output.appendChild(note);
+    } catch (error) {
+        output.textContent = "Unable to load simulation state: " + error.message;
+    }
+}
+
+</script>
+
+</body>
+</html>
