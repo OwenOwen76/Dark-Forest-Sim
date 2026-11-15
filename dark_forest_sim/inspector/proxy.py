@@ -9,7 +9,10 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from ..narrator.api import router as narrator_router
+from ..narrator.api import (
+    router as narrator_router,
+    civilization_router,
+)
 from ..narrator.runtime import NarratorRuntime
 
 
@@ -91,6 +94,7 @@ app = FastAPI(lifespan=lifespan)
 
 app.state.narrator_runtime = NarratorRuntime()
 app.include_router(narrator_router)
+app.include_router(civilization_router)
 
 STATIC_DIR = Path(__file__).parent / "static"
 
