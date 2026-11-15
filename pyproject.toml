@@ -14,3 +14,16 @@ dark-forest-civ-mcp = "dark_forest_sim.civilization_mcp:main"
 
 [tool.uv]
 package = true
+
+[tool.setuptools.packages.find]
+include = ["dark_forest_sim*"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+    "pytest-asyncio>=1.5.0",
+]
+
+[tool.pytest.ini_options]
+asyncio_default_fixture_loop_scope = "function"
+asyncio_mode = "strict"
