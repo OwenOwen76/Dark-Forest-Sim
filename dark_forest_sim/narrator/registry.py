@@ -22,10 +22,12 @@ class NarratorToolbox:
         self,
         universe: Universe,
         scheduler: CivilizationScheduler,
+        on_change: Callable[[], None] | None = None,
     ):
         self._universe = universe
         self._scheduler = scheduler
         self._tools: dict[str, Tool] = {}
+        self._on_change = on_change
 
         self._register_tools()
 
@@ -330,6 +332,9 @@ class NarratorToolbox:
 
         try:
             result = tool.handler(**arguments)
+
+            if tool.category == "world" and self._on_change is not None:
+                self._on_change()
 
             return {
                 "ok": True,
