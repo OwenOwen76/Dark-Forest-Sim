@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "dark-forest": {
+      "command": "/home/owen/dark-forest-sim/.venv/bin/dark-forest-civ-mcp",
+      "args": [],
+      "env": {
+        "DARK_FOREST_SIM_API": "http://127.0.0.1:8099"
+      },
+      "cwd": "/home/owen/dark-forest-sim",
+      "timeout_ms": 3600000
+    }
+  }
+}

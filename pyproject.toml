@@ -11,3 +11,6 @@ dependencies = [
 
 [project.scripts]
 dark-forest-civ-mcp = "dark_forest_sim.civilization_mcp:main"
+
+[tool.uv]
+package = true
