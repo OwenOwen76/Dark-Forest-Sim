@@ -385,19 +385,21 @@ input {
 .muted-note { color: var(--muted); font-size: 11px; line-height: 1.5; }
 
 @media (max-width: 850px) {
-    #narrator-view { grid-template-columns: minmax(170px, .8fr) minmax(240px, 1.2fr); overflow: auto; }
-    #narrator-state-panel { grid-column: 1 / -1; min-height: 180px; }
-}
-@media (max-width: 600px) {
-    #narrator-view { display: none; grid-template-columns: minmax(0, 1fr); overflow: auto; }
-    #narrator-state-panel { grid-column: 1; }
-    .narrator-panel { min-height: 220px; }
+    #narrator-view {
+        grid-template-columns: minmax(170px, 0.8fr) minmax(240px, 1.2fr);
+        overflow: auto;
+    }
+
+    #narrator-state-panel {
+        grid-column: 1 / -1;
+        min-height: 180px;
+    }
 }
 
 @media (max-width: 700px) {
     .workspace {
         grid-template-columns: minmax(0, 1fr);
-        grid-template-rows: repeat(4, minmax(180px, 1fr));
+        grid-template-rows: repeat(4, minmax(180px, auto));
         overflow: auto;
     }
 
@@ -409,119 +411,19 @@ input {
     .divider {
         display: none;
     }
-}
 
-display: none;
-padding: 10px;
-gap: 10px;
-grid-template-columns: minmax(210px, 0.8fr) minmax(300px, 1.4fr) minmax(260px, 1fr);
-background: var(--background);
-}
+    #narrator-view {
+        grid-template-columns: minmax(0, 1fr);
+        overflow: auto;
+    }
 
-.narrator-panel {
-min-width: 0;
-min-height: 0;
-display: flex;
-flex-direction: column;
-overflow: hidden;
-background: var(--panel);
-border: 1px solid var(--border);
-border-radius: 6px;
-}
+    #narrator-state-panel {
+        grid-column: 1;
+    }
 
-.narrator-panel-header {
-min-height: 38px;
-display: flex;
-align-items: center;
-justify-content: space-between;
-padding: 0 12px;
-background: var(--panel-header);
-border-bottom: 1px solid var(--border);
-font-size: 12px;
-font-weight: 600;
-}
-
-.narrator-panel-content {
-min-height: 0;
-flex: 1;
-overflow: auto;
-padding: 10px;
-}
-
-.toolbox-group { margin-bottom: 14px; }
-.toolbox-title {
-margin: 4px 0 7px;
-color: var(--muted);
-font-size: 10px;
-font-weight: 700;
-letter-spacing: .7px;
-text-transform: uppercase;
-}
-
-.tool-item {
-width: 100%;
-display: block;
-margin: 3px 0;
-padding: 8px;
-text-align: left;
-background: #15191f;
-border-color: transparent;
-}
-.tool-item.selected { border-color: var(--accent); background: #202a38; }
-.tool-item small { display: block; margin-top: 4px; color: var(--muted); font-size: 10px; font-weight: 400; }
-
-#tool-description, #tool-result, #narrator-state {
-font-size: 12px;
-line-height: 1.55;
-overflow-wrap: anywhere;
-}
-
-#tool-form { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
-.tool-field { display: flex; flex-direction: column; gap: 5px; }
-.tool-field label { color: var(--muted); font-size: 11px; }
-.tool-field input, .tool-field textarea {
-width: 100%;
-flex: none;
-background: #101419;
-border: 1px solid var(--border);
-border-radius: 4px;
-padding: 8px;
-color: var(--text);
-font: 12px "JetBrains Mono", monospace;
-}
-.tool-field textarea { min-height: 72px; resize: vertical; }
-.tool-actions { display: flex; gap: 8px; margin-top: 12px; }
-.primary-button { background: #29466b; border-color: #456b9b; }
-#tool-result { white-space: pre-wrap; font-family: "JetBrains Mono", monospace; }
-.state-row { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
-.state-row span:first-child { color: var(--muted); }
-.muted-note { color: var(--muted); font-size: 11px; line-height: 1.5; }
-
-@media (max-width: 850px) {
-#narrator-view { grid-template-columns: minmax(170px, .8fr) minmax(240px, 1.2fr); overflow: auto; }
-#narrator-state-panel { grid-column: 1 / -1; min-height: 180px; }
-}
-@media (max-width: 600px) {
-#narrator-view { display: none; grid-template-columns: minmax(0, 1fr); overflow: auto; }
-#narrator-state-panel { grid-column: 1; }
-.narrator-panel { min-height: 220px; }
-}
-
-@media (max-width: 700px) {
-.workspace {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: repeat(4, minmax(180px, 1fr));
-    overflow: auto;
-}
-
-.panel {
-    grid-column: 1 !important;
-    grid-row: auto !important;
-}
-
-.divider {
-    display: none;
-}
+    .narrator-panel {
+        min-height: 220px;
+    }
 }
 </style>
 </head>
