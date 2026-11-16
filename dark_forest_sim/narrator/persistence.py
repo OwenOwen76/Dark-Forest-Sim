@@ -2,6 +2,7 @@ import json
 import os
 import tempfile
 from pathlib import Path
+from typing import Any
 
 from ..engine.civilization import Civilization, CivilizationStatus
 from ..engine.event import Event, EventDelivery, DeliveryStatus
@@ -10,7 +11,8 @@ from ..engine.space import Position
 from ..engine.universe import Universe
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+SUPPORTED_SCHEMA_VERSIONS = {1, 2}
 
 
 class SimulationPersistence:
@@ -24,6 +26,8 @@ class SimulationPersistence:
         universe: Universe,
         scheduler: CivilizationScheduler,
         runtime_state: dict,
+        agent_states: dict | None = None,
+        tool_call_journal: dict | None = None,
     ) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -34,6 +38,8 @@ class SimulationPersistence:
             "scheduler": {
                 "wake_times": scheduler.wake_times,
             },
+            "agent_states": self._serialize_records(agent_states),
+            "tool_call_journal": self._serialize_records(tool_call_journal),
         }
 
         content = json.dumps(
@@ -66,6 +72,28 @@ class SimulationPersistence:
             if temporary_path is not None:
                 temporary_path.unlink(missing_ok=True)
 
+    @staticmethod
+    def _serialize_records(records: dict | None) -> dict:
+        if records is None:
+            return {}
+
+        if not isinstance(records, dict):
+            raise ValueError("Persistent records must be dictionaries")
+
+        serialized = {}
+
+        for key, record in records.items():
+            if hasattr(record, "to_dict"):
+                serialized[key] = record.to_dict()
+            elif isinstance(record, dict):
+                serialized[key] = record
+            else:
+                raise ValueError(
+                    f"Record {key!r} must be a dictionary or support to_dict()"
+                )
+
+        return serialized
+
     def load(self) -> dict | None:
         if not self.path.exists():
             return None
@@ -83,10 +111,10 @@ class SimulationPersistence:
 
         version = data.get("schema_version")
 
-        if version != SCHEMA_VERSION:
+        if version not in SUPPORTED_SCHEMA_VERSIONS:
             raise ValueError(
                 f"Unsupported save version: {version}. "
-                f"Expected {SCHEMA_VERSION}."
+                f"Supported versions: {sorted(SUPPORTED_SCHEMA_VERSIONS)}."
             )
 
         try:
@@ -101,10 +129,22 @@ class SimulationPersistence:
 
             simulation = data["simulation"]
 
+            agent_states = data.get("agent_states", {})
+            tool_call_journal = data.get("tool_call_journal", {})
+
+            if not isinstance(agent_states, dict):
+                raise ValueError("agent_states must be a dictionary")
+
+            if not isinstance(tool_call_journal, dict):
+                raise ValueError("tool_call_journal must be a dictionary")
+
             return {
                 "universe": universe,
                 "scheduler": scheduler,
                 "simulation": simulation,
+                "agent_states": agent_states,
+                "tool_call_journal": tool_call_journal,
+                "loaded_schema_version": version,
             }
 
         except (KeyError, TypeError, ValueError) as exc:
