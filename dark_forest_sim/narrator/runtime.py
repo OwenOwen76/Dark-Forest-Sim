@@ -145,8 +145,58 @@ class NarratorRuntime:
         self.toolbox = NarratorToolbox(
             self.universe,
             self.scheduler,
-            on_change=self.save,
+            on_change=self._handle_world_change
         )
+
+    def _handle_world_change(self) -> None:
+        civilization_id = self.active_civilization_id
+
+        if civilization_id is not None:
+            civilization = self.universe.civilizations.get(civilization_id)
+
+            if civilization is None or civilization.status != CivilizationStatus.ACTIVE:
+                agent = self.agent_states.get(civilization_id)
+
+                if agent is not None:
+                    agent.status = (
+                        AgentStatus.SLEEPING
+                        if civilization is not None
+                        and civilization.status == CivilizationStatus.SLEEPING
+                        else AgentStatus.INTERRUPTED
+                    )
+                    agent.updated_at = _timestamp()
+
+                self.active_civilization_id = None
+                self.status = "stopped"
+
+                if (
+                    self.pending_action is not None
+                    and self.pending_action.get("civilization_id") == civilization_id
+                ):
+                    result = {
+                        "proposal_id": self.pending_action["proposal_id"],
+                        "approved": False,
+                        "explanation": (
+                            "The civilization became inactive before "
+                            "the action was ruled on."
+                        ),
+                    }
+
+                    self.pending_action = None
+                    self.last_action_result = result
+
+                    future = self._action_future
+                    self._action_future = None
+
+                    if future is not None and not future.done():
+                        future.get_loop().call_soon_threadsafe(
+                            lambda: (
+                                not future.done()
+                                and future.set_result(result)
+                            )
+                        )
+
+        self.save()
 
     def save(self) -> None:
         """Persist the complete durable runtime state."""
