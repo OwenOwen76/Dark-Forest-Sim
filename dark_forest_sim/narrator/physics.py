@@ -100,3 +100,40 @@ def calculate_cooling_duration(
         raise ValueError("Cooling power must be positive.")
 
     return energy_joules * waste_heat_fraction / cooling_power_watts
+
+def calculate_signal_travel_time(
+    distance_light_years: float,
+    speed_fraction_of_c: float,
+) -> float:
+    """Calculate signal travel time in years."""
+
+    _require_finite("Distance", distance_light_years)
+    _require_finite("Signal speed", speed_fraction_of_c)
+
+    if distance_light_years < 0:
+        raise ValueError("Distance must be non-negative.")
+
+    if not 0 < speed_fraction_of_c <= 1:
+        raise ValueError("Signal speed must be greater than zero and at most c.")
+
+    return distance_light_years / speed_fraction_of_c
+
+
+def calculate_signal_arrival_time(
+    departure_time: float,
+    distance_light_years: float,
+    speed_fraction_of_c: float,
+) -> float:
+    """Calculate when a signal arrives, in simulation years."""
+
+    _require_finite("Departure time", departure_time)
+
+    if departure_time < 0:
+        raise ValueError("Departure time must be non-negative.")
+
+    travel_time = calculate_signal_travel_time(
+        distance_light_years,
+        speed_fraction_of_c,
+    )
+
+    return departure_time + travel_time

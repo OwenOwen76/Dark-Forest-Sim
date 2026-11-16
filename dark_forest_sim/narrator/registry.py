@@ -3,7 +3,7 @@ from typing import Any, Callable
 
 from ..engine.scheduler import CivilizationScheduler
 from ..engine.universe import Universe
-from . import data, world
+from . import data, physics, world
 
 
 @dataclass(slots=True)
@@ -258,6 +258,74 @@ class NarratorToolbox:
             },
             data.calculate_travel_time,
             ["distance", "speed"],
+        )
+
+        self._register(
+            "calculate_signal_detection_range",
+            "Calculate how far a signal can be detected against background noise, in light-years.",
+            "data",
+            {
+                "signal_power_at_1_ly": {"type": "number"},
+                "background_noise": {"type": "number"},
+                "detection_threshold": {"type": "number"},
+            },
+            physics.calculate_detection_range,
+            [
+                "signal_power_at_1_ly",
+                "background_noise",
+                "detection_threshold",
+            ],
+        )
+
+        self._register(
+            "calculate_waste_heat_power",
+            "Calculate average waste heat output in watts.",
+            "data",
+            {
+                "energy_joules": {"type": "number"},
+                "waste_heat_fraction": {"type": "number"},
+                "duration_seconds": {"type": "number"},
+            },
+            physics.calculate_waste_heat_power,
+            [
+                "energy_joules",
+                "waste_heat_fraction",
+                "duration_seconds",
+            ],
+        )
+
+        self._register(
+            "calculate_infrared_detection_range",
+            "Calculate how far waste heat can be detected in light-years.",
+            "data",
+            {
+                "heat_power_watts": {"type": "number"},
+                "detection_threshold_watts_per_square_meter": {
+                    "type": "number"
+                },
+            },
+            physics.calculate_infrared_detection_range,
+            [
+                "heat_power_watts",
+                "detection_threshold_watts_per_square_meter",
+            ],
+        )
+
+        self._register(
+            "calculate_cooling_duration",
+            "Calculate how long a civilization needs to cool its waste heat, in seconds.",
+            "data",
+            {
+                "energy_joules": {"type": "number"},
+                "waste_heat_fraction": {"type": "number"},
+                "cooling_power_watts": {"type": "number"},
+            },
+            physics.calculate_cooling_duration,
+            [
+                "energy_joules",
+                "waste_heat_fraction",
+                "cooling_power_watts",
+            ],
         )
 
     def list_tools(self) -> list[dict]:
