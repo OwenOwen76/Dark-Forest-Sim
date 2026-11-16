@@ -6,7 +6,7 @@ from pathlib import Path
 
 import httpx
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from ..narrator.api import (
@@ -23,15 +23,42 @@ INFERENCE_ENDPOINTS = {
     "v1/chat/completions",
 }
 
+MAX_SUBSCRIBER_QUEUE_SIZE = 256
+
 subscribers: set[asyncio.Queue] = set()
 
 
 async def broadcast(event: dict) -> None:
-    """Send an inspector event to every connected viewer."""
+    """Send an inspector event to connected viewers without unbounded buffering."""
     message = f"data: {json.dumps(event)}\n\n"
 
-    for queue in list(subscribers):
-        await queue.put(message)
+    overflow_message = (
+        'data: {"type":"overflow",'
+        '"message":"Inspector fell behind; older events were dropped."}\n\n'
+    )
+
+    for queue in tuple(subscribers):
+        if queue.full():
+            try:
+                queue.get_nowait()
+            except asyncio.QueueEmpty:
+                pass
+
+            try:
+                queue.put_nowait(overflow_message)
+            except asyncio.QueueFull:
+                pass
+
+            if queue.full():
+                try:
+                    queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    pass
+
+        try:
+            queue.put_nowait(message)
+        except asyncio.QueueFull:
+            pass
 
 
 async def parse_inference_chunk(data: str, request_id: str) -> None:
@@ -84,7 +111,14 @@ async def parse_inference_chunk(data: str, request_id: str) -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    app.state.client = httpx.AsyncClient(timeout=None)
+    app.state.client = httpx.AsyncClient(
+        timeout=httpx.Timeout(
+            connect=10.0,
+            read=None,
+            write=30.0,
+            pool=10.0,
+        )
+    )
     yield
     await app.state.client.aclose()
 
@@ -112,7 +146,7 @@ async def inspector():
 
 @app.get("/events")
 async def sse_events():
-    queue = asyncio.Queue()
+    queue = asyncio.Queue(maxsize=MAX_SUBSCRIBER_QUEUE_SIZE)
     subscribers.add(queue)
 
     async def event_stream():
@@ -167,10 +201,26 @@ async def proxy_to_llama(path: str, request: Request):
             "path": f"/{path}",
         })
 
-    upstream = await request.app.state.client.send(
-        upstream_request,
-        stream=True,
-    )
+    try:
+        upstream = await request.app.state.client.send(
+            upstream_request,
+            stream=True,
+        )
+    except httpx.RequestError as exc:
+        if is_inference:
+            await broadcast({
+                "type": "error",
+                "id": request_id,
+                "message": "Unable to connect to the inference server.",
+            })
+
+        return JSONResponse(
+            status_code=502,
+            content={
+                "error": "upstream_unavailable",
+                "detail": str(exc),
+            },
+        )
 
     response_headers = {
         key: value
