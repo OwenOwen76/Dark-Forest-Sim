@@ -1,4 +1,10 @@
-from ..engine.civilization import Civilization, CivilizationStatus
+from dataclasses import asdict, replace
+
+from ..engine.civilization import (
+    Civilization,
+    CivilizationResources,
+    CivilizationStatus,
+)
 from ..engine.event import Event
 from ..engine.scheduler import CivilizationScheduler
 from ..engine.space import Position
@@ -243,4 +249,33 @@ def advance_when_idle(
             }
             for civilization in update.awakened
         ],
+    }
+
+def update_civilization_resources(
+    universe: Universe,
+    civilization_id: str,
+    **changes,
+) -> dict:
+    """Atomically update one or more civilization resource fields."""
+
+    civilization = universe.get_civilization(civilization_id)
+
+    if not changes:
+        raise ValueError("At least one resource field must be provided.")
+
+    allowed_fields = set(CivilizationResources.__dataclass_fields__)
+    unexpected = set(changes) - allowed_fields
+
+    if unexpected:
+        raise ValueError(
+            f"Unknown resource fields: {sorted(unexpected)}"
+        )
+
+    # Construct and validate the replacement before mutating the civilization.
+    updated_resources = replace(civilization.resources, **changes)
+    civilization.resources = updated_resources
+
+    return {
+        "civilization_id": civilization.id,
+        "resources": asdict(updated_resources),
     }
