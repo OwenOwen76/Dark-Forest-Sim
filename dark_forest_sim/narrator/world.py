@@ -57,21 +57,32 @@ def modify_civilization(
     civilization = universe.get_civilization(civilization_id)
 
     coordinates = (x, y, z)
+    updated_position = None
 
     if any(value is not None for value in coordinates):
         if not all(value is not None for value in coordinates):
-            raise ValueError("Provide all three coordinates: x, y, and z.")
+            raise ValueError(
+                "Provide all three coordinates: x, y, and z."
+            )
 
-        civilization.position = Position(x, y, z)
+        updated_position = Position(x, y, z)
 
     if name is not None:
+        if not isinstance(name, str):
+            raise TypeError("Civilization name must be a string.")
+
         if not name.strip():
             raise ValueError("Civilization name cannot be empty.")
 
-        civilization.name = name
-
     if name is None and all(value is None for value in coordinates):
         raise ValueError("No modifications were provided.")
+
+    # All validation is complete. Apply changes now.
+    if updated_position is not None:
+        civilization.position = updated_position
+
+    if name is not None:
+        civilization.name = name
 
     return {
         "id": civilization.id,

@@ -81,6 +81,7 @@ class Universe:
                 for civ_id in event.target_civilization_ids
             ]
 
+        # Prepare the complete batch before modifying universe state.
         new_deliveries = []
 
         for civilization in recipients:
@@ -97,19 +98,27 @@ class Universe:
 
             distance = event.origin.distance_to(civilization.position)
             travel_time = distance / event.propagation_speed
+            arrival_time = round(event.created_at + travel_time, 1)
 
             delivery = EventDelivery(
                 event_id=event.id,
                 recipient_civilization_id=civilization.id,
                 distance=distance,
                 departure_time=event.created_at,
-                arrival_time=round(event.created_at + travel_time, 1),
+                arrival_time=arrival_time,
+                status=DeliveryStatus.PENDING,
             )
 
-            self.deliveries[key] = delivery
-            new_deliveries.append(delivery)
+            new_deliveries.append((key, delivery))
 
-        return new_deliveries
+        # Commit only after every delivery has been successfully constructed.
+        for key, delivery in new_deliveries:
+            self.deliveries[key] = delivery
+
+        return [
+            delivery
+            for _, delivery in new_deliveries
+        ]
 
     def get_delivery(
         self, event_id: str, civilization_id: str

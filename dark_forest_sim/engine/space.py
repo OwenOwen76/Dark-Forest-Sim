@@ -11,8 +11,16 @@ class Position:
     z: float
 
     def __post_init__(self):
-        if not all(isfinite(v) for v in (self.x, self.y, self.z)):
-            raise ValueError("Coordinates must be finite numbers.")
+        for name, value in (
+            ("x", self.x),
+            ("y", self.y),
+            ("z", self.z),
+        ):
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise TypeError(f"Coordinate {name} must be numeric.")
+
+            if not isfinite(value):
+                raise ValueError(f"Coordinate {name} must be finite.")
 
     def distance_to(self, other: "Position") -> float:
         """Calculate the Euclidean distance to another position."""
