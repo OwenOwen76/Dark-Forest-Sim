@@ -3,7 +3,7 @@ from typing import Any, Callable
 
 from ..engine.scheduler import CivilizationScheduler
 from ..engine.universe import Universe
-from . import data, physics, world
+from . import data, economics, physics, technology, world
 
 
 @dataclass(slots=True)
@@ -422,6 +422,63 @@ class NarratorToolbox:
             },
             physics.calculate_relativistic_momentum,
             ["mass_kg", "speed_fraction_of_c"],
+        )
+
+        self._register(
+            "roll_technology_breakthrough",
+            "Roll for a technology breakthrough using configurable probabilities and an optional random seed.",
+            "data",
+            {
+                "minor_probability": {"type": "number"},
+                "major_probability": {"type": "number"},
+                "revolutionary_probability": {"type": "number"},
+                "seed": {"type": "integer"},
+            },
+            technology.roll_technology_breakthrough,
+            [
+                "minor_probability",
+                "major_probability",
+                "revolutionary_probability",
+            ],
+        )
+
+        self._register(
+            "calculate_kardashev_energy_output",
+            "Calculate energy production in watts for a Kardashev scale.",
+            "data",
+            {"kardashev_scale": {"type": "number"}},
+            economics.calculate_kardashev_energy_output,
+            ["kardashev_scale"],
+        )
+
+        self._register(
+            "calculate_population_after_growth",
+            "Calculate population after compound annual growth.",
+            "data",
+            {
+                "population": {"type": "integer"},
+                "annual_growth_rate": {"type": "number"},
+                "years": {"type": "integer"},
+            },
+            economics.calculate_population_after_growth,
+            ["population", "annual_growth_rate", "years"],
+        )
+
+        self._register(
+            "calculate_energy_budget",
+            "Calculate energy demand, surplus, and deficit for a civilization.",
+            "data",
+            {
+                "population": {"type": "integer"},
+                "energy_production_watts": {"type": "number"},
+                "energy_consumption_watts_per_person": {"type": "number"},
+            },
+            economics.calculate_energy_budget,
+            [
+                "population",
+                "energy_production_watts",
+                "energy_consumption_watts_per_person",
+            ],
         )
 
     def list_tools(self) -> list[dict]:

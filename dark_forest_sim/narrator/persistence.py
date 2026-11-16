@@ -4,7 +4,11 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from ..engine.civilization import Civilization, CivilizationStatus
+from ..engine.civilization import (
+    Civilization,
+    CivilizationStatus,
+    CivilizationResources,
+)
 from ..engine.event import Event, EventDelivery, DeliveryStatus
 from ..engine.scheduler import CivilizationScheduler
 from ..engine.space import Position
@@ -167,6 +171,15 @@ class SimulationPersistence:
                     },
                     "year": civ.year,
                     "status": civ.status.value,
+                    "resources": {
+                        "population": civ.resources.population,
+                        "annual_population_growth_rate":
+                            civ.resources.annual_population_growth_rate,
+                        "energy_production_watts": civ.resources.energy_production_watts,
+                        "energy_reserve_joules": civ.resources.energy_reserve_joules,
+                        "energy_consumption_watts_per_person":
+                            civ.resources.energy_consumption_watts_per_person,
+                    },
                 }
                 for civ in universe.civilizations.values()
             ],
@@ -210,6 +223,7 @@ class SimulationPersistence:
 
         for item in data["civilizations"]:
             position = Position(**item["position"])
+            resources = CivilizationResources(**item.get("resources", {}))
 
             civilization = Civilization(
                 id=item["id"],
@@ -217,6 +231,7 @@ class SimulationPersistence:
                 position=position,
                 year=item["year"],
                 status=CivilizationStatus(item["status"]),
+                resources=resources,
             )
 
             universe.add_civilization(civilization)
