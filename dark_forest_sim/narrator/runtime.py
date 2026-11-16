@@ -1,10 +1,9 @@
 import asyncio
 from copy import deepcopy
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
-from dataclasses import asdict
 
 from ..engine.civilization import CivilizationStatus
 from ..engine.scheduler import CivilizationScheduler
@@ -211,6 +210,11 @@ class NarratorRuntime:
         return {
             "civilization_id": civilization.id,
             "name": civilization.name,
+            "position": {
+                "x": civilization.position.x,
+                "y": civilization.position.y,
+                "z": civilization.position.z,
+            },
             "year": civilization.year,
             "status": civilization.status.value,
             "resources": asdict(civilization.resources),
