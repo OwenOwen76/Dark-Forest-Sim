@@ -399,6 +399,56 @@ class NarratorRuntime:
         agent.status = AgentStatus.THINKING
         agent.updated_at = _timestamp()
 
+    async def run_agent_turn(self, client):
+        """Run one LLM response for the currently active civilization."""
+
+        async with self._lock:
+            civilization = self.get_active_civilization()
+            agent = self.agent_states[civilization.id]
+
+            messages = []
+
+            if agent.system_prompt:
+                messages.append({
+                    "role": "system",
+                    "content": agent.system_prompt,
+                })
+
+            messages.extend(deepcopy(agent.messages))
+
+            agent.status = AgentStatus.THINKING
+            agent.updated_at = _timestamp()
+            self.save()
+
+            try:
+                response = await client.complete(messages)
+
+                if (
+                    not isinstance(response, dict)
+                    or response.get("role") != "assistant"
+                ):
+                    raise ValueError(
+                        "LLM returned an invalid assistant message."
+                    )
+
+            except Exception:
+                agent.status = AgentStatus.ERROR
+                agent.updated_at = _timestamp()
+                self.save()
+                raise
+
+            agent.messages.append(deepcopy(response))
+            agent.status = AgentStatus.READY
+            agent.updated_at = _timestamp()
+
+            self.civilization_histories[civilization.id] = (
+                deepcopy(agent.messages)
+            )
+
+            self.save()
+
+            return response
+
     async def end_turn(self, years: int):
         async with self._lock:
             civilization = self.get_active_civilization()
