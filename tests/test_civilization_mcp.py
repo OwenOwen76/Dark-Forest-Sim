@@ -9,10 +9,15 @@ EXPECTED_TOOLS = {
     "inspect_knowledge",
     "calculate_distance",
     "calculate_travel_time",
-    "calculate_detection_range",
-    "calculate_thermal_signature",
-    "calculate_signal_arrival",
-    "calculate_relativistic_travel",
+    "calculate_signal_detection_range",
+    "calculate_waste_heat_power",
+    "calculate_infrared_detection_range",
+    "calculate_cooling_duration",
+    "calculate_signal_travel_time",
+    "calculate_signal_arrival_time",
+    "calculate_lorentz_factor",
+    "calculate_relativistic_travel_time",
+    "calculate_proper_travel_time",
     "calculate_energy_budget",
     "calculate_population_growth",
     "propose_action",
@@ -25,7 +30,7 @@ async def test_all_civilization_tools_registered():
     tools = await civ_mcp.mcp.list_tools()
 
     assert {tool.name for tool in tools} == EXPECTED_TOOLS
-    assert len(tools) == 12
+    assert len(tools) == 17
 
 
 @pytest.mark.asyncio
@@ -55,60 +60,99 @@ async def test_calculate_travel_time():
 
 
 @pytest.mark.asyncio
-async def test_calculate_detection_range():
-    result = await civ_mcp.calculate_detection_range(
-        100,
-        2,
-        2,
+async def test_calculate_signal_detection_range():
+    result = await civ_mcp.calculate_signal_detection_range(
+        signal_power_at_1_ly=100,
+        background_noise=2,
+        detection_threshold=2,
     )
 
     assert result == {"detection_range_light_years": 5.0}
 
 
 @pytest.mark.asyncio
-async def test_calculate_thermal_signature():
-    result = await civ_mcp.calculate_thermal_signature(
+async def test_calculate_waste_heat_power():
+    result = await civ_mcp.calculate_waste_heat_power(
         energy_joules=1000,
         waste_heat_fraction=0.5,
         duration_seconds=10,
-        cooling_power_watts=10,
-        detection_threshold_watts_per_square_meter=1e-10,
     )
 
-    assert result["waste_heat_power_watts"] == 50
-    assert result["cooling_duration_seconds"] == 50
-
-    expected_range = physics.calculate_infrared_detection_range(
-        50,
-        1e-10,
-    )
-
-    assert result["infrared_detection_range_light_years"] == expected_range
+    assert result == {"waste_heat_power_watts": 50}
 
 
 @pytest.mark.asyncio
-async def test_calculate_signal_arrival():
-    result = await civ_mcp.calculate_signal_arrival(
+async def test_calculate_infrared_detection_range():
+    result = await civ_mcp.calculate_infrared_detection_range(
+        heat_power_watts=50,
+        detection_threshold_watts_per_square_meter=1e-10,
+    )
+
+    expected = physics.calculate_infrared_detection_range(50, 1e-10)
+
+    assert result == {
+        "detection_range_light_years": expected,
+    }
+
+
+@pytest.mark.asyncio
+async def test_calculate_cooling_duration():
+    result = await civ_mcp.calculate_cooling_duration(
+        energy_joules=1000,
+        waste_heat_fraction=0.5,
+        cooling_power_watts=10,
+    )
+
+    assert result == {"cooling_duration_seconds": 50}
+
+
+@pytest.mark.asyncio
+async def test_calculate_signal_travel_time():
+    result = await civ_mcp.calculate_signal_travel_time(
+        distance_light_years=10,
+        speed_fraction_of_c=0.5,
+    )
+
+    assert result == {"travel_time_years": 20}
+
+
+@pytest.mark.asyncio
+async def test_calculate_signal_arrival_time():
+    result = await civ_mcp.calculate_signal_arrival_time(
         departure_time=100,
         distance_light_years=10,
         speed_fraction_of_c=0.5,
     )
 
-    assert result == {
-        "travel_time_years": 20,
-        "arrival_time": 120,
-    }
+    assert result == {"arrival_time": 120}
 
 
 @pytest.mark.asyncio
-async def test_calculate_relativistic_travel():
-    result = await civ_mcp.calculate_relativistic_travel(
-        distance_light_years=10,
+async def test_calculate_lorentz_factor():
+    result = await civ_mcp.calculate_lorentz_factor(
         speed_fraction_of_c=0.8,
     )
 
     assert result["lorentz_factor"] == pytest.approx(1.6666667)
-    assert result["external_travel_time_years"] == 12.5
+
+
+@pytest.mark.asyncio
+async def test_calculate_relativistic_travel_time():
+    result = await civ_mcp.calculate_relativistic_travel_time(
+        distance_light_years=10,
+        speed_fraction_of_c=0.8,
+    )
+
+    assert result == {"travel_time_years": 12.5}
+
+
+@pytest.mark.asyncio
+async def test_calculate_proper_travel_time():
+    result = await civ_mcp.calculate_proper_travel_time(
+        distance_light_years=10,
+        speed_fraction_of_c=0.8,
+    )
+
     assert result["proper_travel_time_years"] == pytest.approx(7.5)
 
 
@@ -143,17 +187,22 @@ async def test_calculate_population_growth():
 
 @pytest.mark.asyncio
 async def test_calculation_tools_reject_invalid_inputs():
-    with pytest.raises(ValueError):
-        await civ_mcp.calculate_travel_time(10, 0)
+    invalid_calls = [
+        lambda: civ_mcp.calculate_travel_time(10, 0),
+        lambda: civ_mcp.calculate_signal_detection_range(100, 0, 2),
+        lambda: civ_mcp.calculate_waste_heat_power(1000, 0.5, 0),
+        lambda: civ_mcp.calculate_infrared_detection_range(50, 0),
+        lambda: civ_mcp.calculate_cooling_duration(1000, 0.5, 0),
+        lambda: civ_mcp.calculate_signal_travel_time(10, 0),
+        lambda: civ_mcp.calculate_signal_arrival_time(0, 10, 0),
+        lambda: civ_mcp.calculate_lorentz_factor(1),
+        lambda: civ_mcp.calculate_relativistic_travel_time(10, 1),
+        lambda: civ_mcp.calculate_proper_travel_time(10, 1),
+    ]
 
-    with pytest.raises(ValueError):
-        await civ_mcp.calculate_detection_range(100, 0, 2)
-
-    with pytest.raises(ValueError):
-        await civ_mcp.calculate_signal_arrival(0, 10, 0)
-
-    with pytest.raises(ValueError):
-        await civ_mcp.calculate_relativistic_travel(10, 1)
+    for call in invalid_calls:
+        with pytest.raises(ValueError):
+            await call()
 
 
 @pytest.mark.asyncio
