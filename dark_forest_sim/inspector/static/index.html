@@ -377,6 +377,15 @@ input {
     font: 12px "JetBrains Mono", monospace;
 }
 .tool-field textarea { min-height: 72px; resize: vertical; }
+.tool-field select {
+    width: 100%;
+    background: #101419;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 8px;
+    color: var(--text);
+    font: 12px system-ui, sans-serif;
+}
 .tool-actions { display: flex; gap: 8px; margin-top: 12px; }
 .primary-button { background: #29466b; border-color: #456b9b; }
 #tool-result { white-space: pre-wrap; font-family: "JetBrains Mono", monospace; }
@@ -534,13 +543,19 @@ input {
         <span class="panel-subtitle" id="selected-tool-category"></span>
     </div>
     <div class="narrator-panel-content">
-        <div id="tool-description" class="muted-note">Select a tool to inspect its description and parameters.</div>
+        <div id="tool-description" class="muted-note">Select a tool to inspect its operations and parameters.</div>
+
+        <div id="operation-selector" class="tool-field" hidden>
+            <label for="selected-operation">Operation</label>
+            <select id="selected-operation"></select>
+        </div>
+
         <form id="tool-form" onsubmit="executeSelectedTool(event)"></form>
         <div class="tool-actions">
-            <button class="primary-button" id="execute-tool" disabled onclick="document.getElementById('tool-form').requestSubmit()">Execute tool</button>
+            <button class="primary-button" id="execute-tool" disabled onclick="document.getElementById('tool-form').requestSubmit()">Execute operation</button>
         </div>
         <h4 style="font-size:11px;margin:20px 0 8px">Execution result</h4>
-        <div id="tool-result" class="muted-note">No tool has been executed.</div>
+        <div id="tool-result" class="muted-note">No operation has been executed.</div>
     </div>
 </section>
 
@@ -711,6 +726,7 @@ async function loadFile() {
 // implement simulation mechanics or invoke the LLM directly.
 let narratorTools = [];
 let selectedTool = null;
+let selectedOperation = null;
 
 function showView(view) {
     const dashboard = view === "dashboard";
@@ -718,6 +734,7 @@ function showView(view) {
     document.getElementById("narrator-view").style.display = dashboard ? "none" : "grid";
     document.getElementById("dashboard-tab").classList.toggle("active", dashboard);
     document.getElementById("narrator-tab").classList.toggle("active", !dashboard);
+
     if (!dashboard) {
         loadNarratorTools();
         loadNarratorState();
@@ -729,14 +746,20 @@ async function narratorRequest(path, options = {}) {
         headers: { "Content-Type": "application/json" },
         ...options,
     });
+
     const body = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(body.detail || response.statusText);
+
+    if (!response.ok) {
+        throw new Error(body.detail || response.statusText);
+    }
+
     return body;
 }
 
 async function loadNarratorTools() {
     const list = document.getElementById("tool-list");
     list.textContent = "Loading tools...";
+
     try {
         const body = await narratorRequest("/api/narrator/tools");
         narratorTools = body.tools || [];
@@ -749,112 +772,272 @@ async function loadNarratorTools() {
 function renderToolList() {
     const list = document.getElementById("tool-list");
     list.innerHTML = "";
+
     const groups = [
         ["world", "World Modification"],
         ["data", "Mathematics & Data"],
     ];
+
     for (const [category, title] of groups) {
         const tools = narratorTools.filter(tool => tool.category === category);
+
         const group = document.createElement("div");
         group.className = "toolbox-group";
+
         const heading = document.createElement("div");
         heading.className = "toolbox-title";
         heading.textContent = title;
         group.appendChild(heading);
+
         for (const tool of tools) {
             const button = document.createElement("button");
-            button.className = "tool-item" + (selectedTool?.name === tool.name ? " selected" : "");
+            button.className = "tool-item";
+            button.dataset.toolName = tool.name;
             button.textContent = tool.name;
+
             const description = document.createElement("small");
             description.textContent = tool.description;
             button.appendChild(description);
+
             button.addEventListener("click", () => selectTool(tool));
             group.appendChild(button);
         }
+
         list.appendChild(group);
     }
-    if (!narratorTools.length) list.textContent = "No tools are registered.";
-    if (selectedTool) {
-        const refreshed = narratorTools.find(tool => tool.name === selectedTool.name);
-        if (refreshed) selectTool(refreshed);
+
+    if (!narratorTools.length) {
+        list.textContent = "No tools are registered.";
+        return;
     }
+
+    if (selectedTool) {
+        const refreshed = narratorTools.find(
+            tool => tool.name === selectedTool.name
+        );
+
+        if (refreshed) {
+            selectTool(refreshed, selectedOperation);
+            return;
+        }
+    }
+
+    selectTool(narratorTools[0]);
 }
 
-function selectTool(tool) {
+function selectTool(tool, preferredOperation = null) {
     selectedTool = tool;
-    document.getElementById("selected-tool-title").textContent = tool.name;
-    document.getElementById("selected-tool-category").textContent = tool.category === "world" ? "World Modification" : "Mathematics & Data";
-    document.getElementById("tool-description").textContent = tool.description;
-    document.getElementById("execute-tool").disabled = false;
-    renderToolListSelection();
 
-    const form = document.getElementById("tool-form");
-    form.innerHTML = "";
-    const schema = tool.parameters || {};
-    const properties = schema.properties || {};
-    const required = schema.required || [];
-    for (const [name, definition] of Object.entries(properties)) {
-        const wrapper = document.createElement("div");
-        wrapper.className = "tool-field";
-        const label = document.createElement("label");
-        label.textContent = name + (required.includes(name) ? " *" : "");
-        label.htmlFor = "tool-param-" + name;
-        const input = definition.type === "array" || definition.type === "object"
-            ? document.createElement("textarea")
-            : document.createElement("input");
-        input.id = label.htmlFor;
-        input.name = name;
-        input.dataset.type = definition.type || "string";
-        input.placeholder = definition.type === "array" ? '["civ-a", "civ-b"]' : (definition.type === "object" ? "{}" : definition.type);
-        if (required.includes(name)) input.required = true;
-        if (definition.type === "integer" || definition.type === "number") input.type = "number";
-        if (definition.type === "integer") input.step = "1";
-        if (definition.type === "number") input.step = "any";
-        if (definition.type === "boolean") {
-            input.type = "checkbox";
-            input.checked = false;
-        }
-        wrapper.append(label, input);
-        form.appendChild(wrapper);
+    const operations = tool.operations || [];
+    const operation = operations.find(
+        item => item.name === preferredOperation
+    ) || operations[0] || null;
+
+    selectedOperation = operation?.name || null;
+
+    document.getElementById("selected-tool-title").textContent = tool.name;
+    document.getElementById("selected-tool-category").textContent =
+        tool.category === "world" ? "World Modification" : "Mathematics & Data";
+
+    document.getElementById("tool-description").textContent = tool.description;
+    document.getElementById("execute-tool").disabled = !operation;
+    document.getElementById("execute-tool").textContent =
+        operation ? "Execute operation" : "No operations available";
+
+    const selector = document.getElementById("operation-selector");
+    const select = document.getElementById("selected-operation");
+
+    selector.hidden = operations.length === 0;
+    select.innerHTML = "";
+
+    for (const item of operations) {
+        const option = document.createElement("option");
+        option.value = item.name;
+        option.textContent = item.name;
+        select.appendChild(option);
     }
-    document.getElementById("tool-result").textContent = "Ready to execute " + tool.name + ".";
+
+    select.value = selectedOperation || "";
+
+    select.onchange = () => {
+        selectedOperation = select.value;
+        renderSelectedOperation();
+    };
+
+    renderToolListSelection();
+    renderSelectedOperation();
 }
 
 function renderToolListSelection() {
     document.querySelectorAll(".tool-item").forEach(button => {
-        button.classList.toggle("selected", button.firstChild.textContent === selectedTool?.name);
+        button.classList.toggle(
+            "selected",
+            button.dataset.toolName === selectedTool?.name
+        );
     });
+}
+
+function renderSelectedOperation() {
+    const form = document.getElementById("tool-form");
+    const output = document.getElementById("tool-result");
+
+    form.innerHTML = "";
+
+    const operation = selectedTool?.operations?.find(
+        item => item.name === selectedOperation
+    );
+
+    if (!operation) {
+        output.textContent = "Select a tool operation.";
+        return;
+    }
+
+    document.getElementById("execute-tool").disabled = false;
+
+    document.getElementById("tool-description").textContent =
+        operation.description || selectedTool.description;
+
+    const schema = operation.parameters || {};
+    const properties = schema.properties || {};
+    const required = schema.required || [];
+
+    for (const [name, definition] of Object.entries(properties)) {
+        const wrapper = document.createElement("div");
+        wrapper.className = "tool-field";
+
+        const label = document.createElement("label");
+        label.textContent =
+            name.replaceAll("_", " ") +
+            (required.includes(name) ? " *" : "");
+
+        const id = "tool-param-" + name;
+        label.htmlFor = id;
+
+        let input;
+
+        if (definition.enum) {
+            input = document.createElement("select");
+
+            for (const value of definition.enum) {
+                const option = document.createElement("option");
+                option.value = value;
+                option.textContent = value;
+                input.appendChild(option);
+            }
+        } else if (
+            definition.type === "array" ||
+            definition.type === "object"
+        ) {
+            input = document.createElement("textarea");
+            input.placeholder = definition.type === "array"
+                ? '["civ-a", "civ-b"]'
+                : "{}";
+        } else {
+            input = document.createElement("input");
+            input.type = definition.type === "integer" ||
+                definition.type === "number"
+                ? "number"
+                : definition.type === "boolean"
+                    ? "checkbox"
+                    : "text";
+        }
+
+        input.id = id;
+        input.name = name;
+        input.dataset.type = definition.type || "string";
+
+        if (required.includes(name)) {
+            input.required = true;
+        }
+
+        if (definition.type === "integer") {
+            input.step = "1";
+        } else if (definition.type === "number") {
+            input.step = "any";
+        }
+
+        if (definition.minimum !== undefined) {
+            input.min = definition.minimum;
+        }
+
+        if (definition.maximum !== undefined) {
+            input.max = definition.maximum;
+        }
+
+        if (definition.description) {
+            input.title = definition.description;
+        }
+
+        wrapper.append(label, input);
+
+        if (definition.description) {
+            const hint = document.createElement("small");
+            hint.className = "muted-note";
+            hint.textContent = definition.description;
+            wrapper.appendChild(hint);
+        }
+
+        form.appendChild(wrapper);
+    }
+
+    output.textContent = "Ready to execute " + operation.name + ".";
 }
 
 async function executeSelectedTool(event) {
     event.preventDefault();
-    if (!selectedTool) return;
-    const args = {};
-    for (const input of document.getElementById("tool-form").elements) {
+
+    if (!selectedTool || !selectedOperation) return;
+
+    const args = {
+        operation: selectedOperation,
+    };
+
+    const form = document.getElementById("tool-form");
+
+    for (const input of form.elements) {
         if (!input.name) continue;
+
         if (input.type === "checkbox") {
             args[input.name] = input.checked;
             continue;
         }
+
         if (input.value === "") continue;
+
         const type = input.dataset.type;
-        if (type === "integer") args[input.name] = Number.parseInt(input.value, 10);
-        else if (type === "number") args[input.name] = Number(input.value);
-        else if (type === "array" || type === "object") {
-            try { args[input.name] = JSON.parse(input.value); }
-            catch { document.getElementById("tool-result").textContent = `Invalid JSON for ${input.name}.`; return; }
-        } else args[input.name] = input.value;
+
+        if (type === "integer") {
+            args[input.name] = Number.parseInt(input.value, 10);
+        } else if (type === "number") {
+            args[input.name] = Number(input.value);
+        } else if (type === "array" || type === "object") {
+            try {
+                args[input.name] = JSON.parse(input.value);
+            } catch {
+                document.getElementById("tool-result").textContent =
+                    `Invalid JSON for ${input.name}.`;
+                return;
+            }
+        } else {
+            args[input.name] = input.value;
+        }
     }
 
     const output = document.getElementById("tool-result");
     const button = document.getElementById("execute-tool");
+
     button.disabled = true;
     output.textContent = "Executing...";
+
     try {
         const result = await narratorRequest("/api/narrator/call", {
             method: "POST",
-            body: JSON.stringify({ tool: selectedTool.name, arguments: args }),
+            body: JSON.stringify({
+                tool: selectedTool.name,
+                arguments: args,
+            }),
         });
+
         output.textContent = JSON.stringify(result, null, 2);
         await loadNarratorState();
     } catch (error) {
