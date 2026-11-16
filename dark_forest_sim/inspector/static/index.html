@@ -393,6 +393,94 @@ input {
 .state-row span:first-child { color: var(--muted); }
 .muted-note { color: var(--muted); font-size: 11px; line-height: 1.5; }
 
+#civilization-view {
+    display: none;
+    height: calc(100vh - 88px);
+    padding: 10px;
+    gap: 10px;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(180px, 0.65fr);
+    background: var(--background);
+}
+
+#civilization-controls {
+    grid-column: 1 / -1;
+}
+
+.civilization-control-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.5fr) minmax(180px, 0.7fr);
+    gap: 20px;
+}
+
+.civilization-control-grid > div {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.civilization-control-grid label {
+    color: var(--muted);
+    font-size: 11px;
+}
+
+.civilization-control-grid textarea {
+    width: 100%;
+    min-height: 70px;
+    resize: vertical;
+    background: #101419;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 8px;
+    color: var(--text);
+    font: 12px system-ui, sans-serif;
+}
+
+.civilization-control-grid input {
+    width: 100%;
+    flex: none;
+}
+
+#civilization-action-result {
+    margin-top: 14px;
+    white-space: pre-wrap;
+}
+
+.civilization-resource {
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.civilization-resource strong {
+    display: block;
+    font-size: 15px;
+    margin-top: 4px;
+}
+
+.civilization-resource span {
+    color: var(--muted);
+    font-size: 11px;
+}
+
+.known-event {
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.known-event strong {
+    display: block;
+    font-size: 12px;
+    margin-bottom: 5px;
+}
+
+.known-event p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.5;
+}
+
 @media (max-width: 850px) {
     #narrator-view {
         grid-template-columns: minmax(170px, 0.8fr) minmax(240px, 1.2fr);
@@ -402,6 +490,10 @@ input {
     #narrator-state-panel {
         grid-column: 1 / -1;
         min-height: 180px;
+    }
+
+    #civilization-view {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     }
 }
 
@@ -433,7 +525,22 @@ input {
     .narrator-panel {
         min-height: 220px;
     }
+
+    #civilization-view {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-rows: repeat(3, minmax(180px, auto));
+        overflow: auto;
+    }
+
+    #civilization-controls {
+        grid-column: 1;
+    }
+
+    .civilization-control-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
 }
+
 </style>
 </head>
 
@@ -450,6 +557,7 @@ input {
 <nav class="tabs" aria-label="Main views">
 <button class="tab-button active" id="dashboard-tab" onclick="showView('dashboard')">Simulation</button>
 <button class="tab-button" id="narrator-tab" onclick="showView('narrator')">Narrator</button>
+<button class="tab-button" id="civilization-tab" onclick="showView('civilization')">Civilization</button>
 </nav>
 
 <div id="dashboard-view">
@@ -557,6 +665,22 @@ input {
         <h4 style="font-size:11px;margin:20px 0 8px">Execution result</h4>
         <div id="tool-result" class="muted-note">No operation has been executed.</div>
     </div>
+    <div id="pending-action" style="margin-top:20px">
+        <h4 style="font-size:11px;margin:0 0 8px">Pending civilization action</h4>
+        <div id="pending-action-details" class="muted-note">
+            No action awaiting approval.
+        </div>
+        <textarea id="pending-action-explanation"
+            placeholder="Optional explanation..."
+            style="width:100%;min-height:55px;margin-top:8px;background:#101419;border:1px solid var(--border);border-radius:4px;padding:8px;color:var(--text)"
+        ></textarea>
+        <div class="tool-actions">
+            <button class="primary-button" id="approve-action"
+                onclick="resolvePendingAction(true)" disabled>Approve</button>
+            <button id="reject-action"
+                onclick="resolvePendingAction(false)" disabled>Reject</button>
+        </div>
+    </div>
 </section>
 
 <section class="narrator-panel" id="narrator-state-panel">
@@ -568,6 +692,75 @@ input {
         <div class="placeholder">Loading simulation state...</div>
     </div>
 </section>
+</section>
+
+<section id="civilization-view">
+    <section class="narrator-panel">
+        <div class="narrator-panel-header">
+            <span>Civilization</span>
+            <button onclick="loadCivilizationView()">Refresh</button>
+        </div>
+        <div class="narrator-panel-content">
+            <div id="civilization-selection">
+                <div class="tool-field">
+                    <label for="civilization-select">Select an awake civilization</label>
+                    <select id="civilization-select">
+                        <option value="">Loading civilizations...</option>
+                    </select>
+                </div>
+                <button class="primary-button" id="activate-civilization"
+                    onclick="activateSelectedCivilization()" disabled>
+                    Activate civilization
+                </button>
+            </div>
+
+            <div id="civilization-details" class="muted-note">
+                Loading civilization state...
+            </div>
+        </div>
+    </section>
+
+    <section class="narrator-panel">
+        <div class="narrator-panel-header">
+            <span>Known Events</span>
+            <span class="panel-subtitle" id="known-event-count">—</span>
+        </div>
+        <div class="narrator-panel-content" id="known-events">
+            <div class="placeholder">No civilization selected.</div>
+        </div>
+    </section>
+
+    <section class="narrator-panel" id="civilization-controls">
+        <div class="narrator-panel-header">
+            <span>Agent Controls</span>
+            <span class="panel-subtitle" id="civilization-agent-status">Inactive</span>
+        </div>
+        <div class="narrator-panel-content">
+            <div class="civilization-control-grid">
+                <div>
+                    <label for="civilization-action">Propose an action</label>
+                    <textarea id="civilization-action"
+                        placeholder="Describe what the civilization wants to do..."></textarea>
+                    <button class="primary-button" id="submit-civilization-action"
+                        onclick="submitCivilizationAction()" disabled>
+                        Submit action
+                    </button>
+                </div>
+
+                <div>
+                    <label for="time-lapse-years">Time-lapse duration (years)</label>
+                    <input id="time-lapse-years" type="number" min="1" step="1" value="100">
+                    <button id="end-civilization-turn"
+                        onclick="endCivilizationTurn()" disabled>
+                        End turn
+                    </button>
+                </div>
+            </div>
+            <div id="civilization-action-result" class="muted-note">
+                Activate a civilization to enable agent controls.
+            </div>
+        </div>
+    </section>
 </section>
 
 <script>
@@ -729,15 +922,30 @@ let selectedTool = null;
 let selectedOperation = null;
 
 function showView(view) {
-    const dashboard = view === "dashboard";
-    document.getElementById("dashboard-view").style.display = dashboard ? "block" : "none";
-    document.getElementById("narrator-view").style.display = dashboard ? "none" : "grid";
-    document.getElementById("dashboard-tab").classList.toggle("active", dashboard);
-    document.getElementById("narrator-tab").classList.toggle("active", !dashboard);
+    const views = ["dashboard", "narrator", "civilization"];
 
-    if (!dashboard) {
+    for (const name of views) {
+        const visible = name === view;
+        const viewElement = document.getElementById(
+            name === "dashboard" ? "dashboard-view" : `${name}-view`
+        );
+        const tabElement = document.getElementById(`${name}-tab`);
+
+        viewElement.style.display = visible
+            ? (name === "dashboard" ? "block" : "grid")
+            : "none";
+
+        tabElement.classList.toggle("active", visible);
+    }
+
+    if (view === "narrator") {
         loadNarratorTools();
         loadNarratorState();
+        loadPendingAction();
+    }
+
+    if (view === "civilization") {
+        loadCivilizationView();
     }
 }
 
@@ -1075,6 +1283,351 @@ async function loadNarratorState() {
         output.appendChild(note);
     } catch (error) {
         output.textContent = "Unable to load simulation state: " + error.message;
+    }
+}
+
+let pendingCivilizationAction = null;
+
+async function loadPendingAction() {
+    const details = document.getElementById("pending-action-details");
+
+    try {
+        const body = await narratorRequest("/api/narrator/pending-action");
+        pendingCivilizationAction = body.pending_action;
+
+        if (!pendingCivilizationAction) {
+            details.textContent = "No action awaiting approval.";
+            document.getElementById("approve-action").disabled = true;
+            document.getElementById("reject-action").disabled = true;
+            return;
+        }
+
+        details.textContent =
+            `${pendingCivilizationAction.civilization_name} proposes:\n\n` +
+            pendingCivilizationAction.description;
+
+        document.getElementById("approve-action").disabled = false;
+        document.getElementById("reject-action").disabled = false;
+    } catch (error) {
+        details.textContent = "Unable to load pending action: " + error.message;
+    }
+}
+
+async function resolvePendingAction(approved) {
+    if (!pendingCivilizationAction) return;
+
+    const explanation =
+        document.getElementById("pending-action-explanation").value;
+
+    const details = document.getElementById("pending-action-details");
+
+    document.getElementById("approve-action").disabled = true;
+    document.getElementById("reject-action").disabled = true;
+    details.textContent = "Submitting ruling...";
+
+    try {
+        const result = await narratorRequest("/api/narrator/resolve-action", {
+            method: "POST",
+            body: JSON.stringify({
+                proposal_id: pendingCivilizationAction.proposal_id,
+                approved,
+                explanation,
+            }),
+        });
+
+        details.textContent = approved
+            ? "Action approved."
+            : "Action rejected.";
+
+        document.getElementById("pending-action-explanation").value = "";
+        pendingCivilizationAction = null;
+
+        await loadPendingAction();
+    } catch (error) {
+        details.textContent = "Unable to submit ruling: " + error.message;
+        document.getElementById("approve-action").disabled = false;
+        document.getElementById("reject-action").disabled = false;
+    }
+}
+
+let availableCivilizations = [];
+let activeCivilization = null;
+
+function formatCivilizationNumber(value) {
+    if (typeof value !== "number") return value ?? "—";
+
+    return new Intl.NumberFormat("en-US", {
+        maximumFractionDigits: 2,
+    }).format(value);
+}
+
+async function getCivilizationList() {
+    const response = await narratorRequest("/api/narrator/call", {
+        method: "POST",
+        body: JSON.stringify({
+            tool: "query_universe",
+            arguments: {
+                operation: "list_civilizations",
+            },
+        }),
+    });
+
+    if (!response.ok) {
+        throw new Error(response.error || "Unable to list civilizations.");
+    }
+
+    return response.result || [];
+}
+
+async function loadCivilizationView() {
+    const details = document.getElementById("civilization-details");
+    const select = document.getElementById("civilization-select");
+    const activateButton = document.getElementById("activate-civilization");
+
+    details.textContent = "Loading civilization state...";
+
+    try {
+        availableCivilizations = await getCivilizationList();
+
+        select.innerHTML = "";
+
+        for (const civilization of availableCivilizations) {
+            const option = document.createElement("option");
+            option.value = civilization.id;
+            option.textContent =
+                `${civilization.name} — ${civilization.status}`;
+            select.appendChild(option);
+        }
+
+        select.onchange = updateCivilizationSelection;
+
+        let context = null;
+
+        try {
+            context = await narratorRequest("/api/civilization/context");
+        } catch {
+            // No civilization is currently active.
+        }
+
+        activeCivilization = context;
+
+        if (context) {
+            select.value = context.civilization_id;
+            activateButton.disabled = true;
+            activateButton.textContent = "Civilization active";
+            renderCivilizationDetails(context);
+            await loadKnownEvents();
+            setCivilizationControls(true);
+        } else {
+            activateButton.textContent = "Activate civilization";
+            details.textContent =
+                "No civilization is currently active. Select an awake civilization to activate it.";
+            renderKnownEvents([]);
+            setCivilizationControls(false);
+            updateCivilizationSelection();
+        }
+    } catch (error) {
+        details.textContent =
+            "Unable to load civilizations: " + error.message;
+    }
+}
+
+function updateCivilizationSelection() {
+    const selected = availableCivilizations.find(
+        civilization =>
+            civilization.id ===
+            document.getElementById("civilization-select").value
+    );
+
+    document.getElementById("activate-civilization").disabled =
+        !selected || selected.status !== "active" || !!activeCivilization;
+}
+
+async function activateSelectedCivilization() {
+    const civilizationId =
+        document.getElementById("civilization-select").value;
+
+    if (!civilizationId) return;
+
+    const button = document.getElementById("activate-civilization");
+    button.disabled = true;
+    button.textContent = "Activating...";
+
+    try {
+        await narratorRequest("/api/civilization/activate", {
+            method: "POST",
+            body: JSON.stringify({
+                civilization_id: civilizationId,
+            }),
+        });
+
+        await loadCivilizationView();
+    } catch (error) {
+        document.getElementById("civilization-details").textContent =
+            "Unable to activate civilization: " + error.message;
+        button.disabled = false;
+        button.textContent = "Activate civilization";
+    }
+}
+
+function renderCivilizationDetails(civilization) {
+    const output = document.getElementById("civilization-details");
+    output.innerHTML = "";
+
+    const heading = document.createElement("h3");
+    heading.textContent = civilization.name;
+    heading.style.margin = "0 0 6px";
+
+    const identity = document.createElement("p");
+    identity.className = "muted-note";
+    identity.textContent =
+        `ID: ${civilization.civilization_id} · Local year: ${formatCivilizationNumber(civilization.year)}`;
+
+    const status = document.createElement("p");
+    status.className = "muted-note";
+    status.textContent = `Status: ${civilization.status}`;
+
+    output.append(heading, identity, status);
+
+    const resources = civilization.resources || {};
+    const labels = {
+        population: "Population",
+        annual_population_growth_rate: "Annual population growth",
+        energy_production_watts: "Energy production (W)",
+        energy_reserve_joules: "Energy reserves (J)",
+        energy_consumption_watts_per_person: "Energy consumption per person (W)",
+    };
+
+    for (const [key, label] of Object.entries(labels)) {
+        const row = document.createElement("div");
+        row.className = "civilization-resource";
+
+        const name = document.createElement("span");
+        name.textContent = label;
+
+        const value = document.createElement("strong");
+        value.textContent = formatCivilizationNumber(resources[key]);
+
+        row.append(name, value);
+        output.appendChild(row);
+    }
+
+    document.getElementById("civilization-agent-status").textContent =
+        "Active";
+}
+
+async function loadKnownEvents() {
+    const output = document.getElementById("known-events");
+
+    try {
+        const body = await narratorRequest("/api/civilization/knowledge");
+        renderKnownEvents(body.known_events || []);
+    } catch (error) {
+        output.textContent = "Unable to load known events: " + error.message;
+    }
+}
+
+function renderKnownEvents(events) {
+    const output = document.getElementById("known-events");
+    output.innerHTML = "";
+
+    document.getElementById("known-event-count").textContent =
+        `${events.length} known`;
+
+    if (!events.length) {
+        output.textContent = "This civilization has not received any events.";
+        return;
+    }
+
+    for (const event of events) {
+        const item = document.createElement("div");
+        item.className = "known-event";
+
+        const title = document.createElement("strong");
+        title.textContent = `${event.event_type} · ${event.event_id}`;
+
+        const description = document.createElement("p");
+        description.textContent = event.description;
+
+        const arrival = document.createElement("p");
+        arrival.textContent =
+            `Arrived at universe time ${formatCivilizationNumber(event.delivery.arrival_time)}`;
+
+        item.append(title, description, arrival);
+        output.appendChild(item);
+    }
+}
+
+function setCivilizationControls(enabled) {
+    document.getElementById("submit-civilization-action").disabled = !enabled;
+    document.getElementById("end-civilization-turn").disabled = !enabled;
+
+    document.getElementById("civilization-agent-status").textContent =
+        enabled ? "Active" : "Inactive";
+
+    document.getElementById("civilization-action-result").textContent =
+        enabled
+            ? "The civilization is active and ready."
+            : "Activate an awake civilization to enable agent controls.";
+}
+
+async function submitCivilizationAction() {
+    const description =
+        document.getElementById("civilization-action").value.trim();
+
+    if (!description) return;
+
+    const button = document.getElementById("submit-civilization-action");
+    const output = document.getElementById("civilization-action-result");
+
+    button.disabled = true;
+    output.textContent = "Action submitted. Waiting for narrator approval...";
+
+    try {
+        const result = await narratorRequest("/api/civilization/action", {
+            method: "POST",
+            body: JSON.stringify({ description }),
+        });
+
+        output.textContent = JSON.stringify(result, null, 2);
+        document.getElementById("civilization-action").value = "";
+    } catch (error) {
+        output.textContent = "Action failed: " + error.message;
+    } finally {
+        button.disabled = false;
+        await loadCivilizationView();
+    }
+}
+
+async function endCivilizationTurn() {
+    const years = Number.parseInt(
+        document.getElementById("time-lapse-years").value,
+        10
+    );
+
+    if (!Number.isInteger(years) || years < 1) {
+        document.getElementById("civilization-action-result").textContent =
+            "Enter a positive whole number of years.";
+        return;
+    }
+
+    const button = document.getElementById("end-civilization-turn");
+    const output = document.getElementById("civilization-action-result");
+
+    button.disabled = true;
+    output.textContent = "Ending civilization turn...";
+
+    try {
+        const result = await narratorRequest("/api/civilization/time-lapse", {
+            method: "POST",
+            body: JSON.stringify({ years }),
+        });
+
+        output.textContent = JSON.stringify(result, null, 2);
+        await loadCivilizationView();
+    } catch (error) {
+        output.textContent = "Unable to end turn: " + error.message;
+        button.disabled = false;
     }
 }
 
