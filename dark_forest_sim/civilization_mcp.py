@@ -114,10 +114,10 @@ async def calculate_travel_time(
 @mcp.tool(
     description=(
         "Calculate the maximum distance at which a signal can be "
-        "detected against background noise."
+        "detected against background noise, in light-years."
     )
 )
-async def calculate_detection_range(
+async def calculate_signal_detection_range(
     signal_power_at_1_ly: float,
     background_noise: float,
     detection_threshold: float,
@@ -132,100 +132,116 @@ async def calculate_detection_range(
 
 
 @mcp.tool(
-    description=(
-        "Calculate a civilization's thermal signature, infrared "
-        "detection range, and cooling duration."
-    )
+    description="Calculate average waste heat output in watts."
 )
-async def calculate_thermal_signature(
+async def calculate_waste_heat_power(
     energy_joules: float,
     waste_heat_fraction: float,
     duration_seconds: float,
-    cooling_power_watts: float,
-    detection_threshold_watts_per_square_meter: float,
 ) -> dict:
-    heat_power = physics.calculate_waste_heat_power(
+    result = physics.calculate_waste_heat_power(
         energy_joules,
         waste_heat_fraction,
         duration_seconds,
     )
+    return {"waste_heat_power_watts": result}
 
-    detection_range = physics.calculate_infrared_detection_range(
-        heat_power,
+
+@mcp.tool(
+    description="Calculate infrared detection range in light-years."
+)
+async def calculate_infrared_detection_range(
+    heat_power_watts: float,
+    detection_threshold_watts_per_square_meter: float,
+) -> dict:
+    result = physics.calculate_infrared_detection_range(
+        heat_power_watts,
         detection_threshold_watts_per_square_meter,
     )
+    return {"detection_range_light_years": result}
 
-    cooling_duration = physics.calculate_cooling_duration(
+
+@mcp.tool(
+    description="Calculate how long it takes to cool a given energy reserve, in seconds."
+)
+async def calculate_cooling_duration(
+    energy_joules: float,
+    waste_heat_fraction: float,
+    cooling_power_watts: float,
+) -> dict:
+    result = physics.calculate_cooling_duration(
         energy_joules,
         waste_heat_fraction,
         cooling_power_watts,
     )
+    return {"cooling_duration_seconds": result}
 
-    return {
-        "waste_heat_power_watts": heat_power,
-        "infrared_detection_range_light_years": detection_range,
-        "cooling_duration_seconds": cooling_duration,
-    }
+@mcp.tool(
+    description="Calculate signal travel time in years."
+)
+async def calculate_signal_travel_time(
+    distance_light_years: float,
+    speed_fraction_of_c: float,
+) -> dict:
+    result = physics.calculate_signal_travel_time(
+        distance_light_years,
+        speed_fraction_of_c,
+    )
+    return {"travel_time_years": result}
 
 
 @mcp.tool(
-    description=(
-        "Calculate when a signal will arrive at its destination, "
-        "using simulation time in years and distance in light-years."
-    )
+    description="Calculate the absolute arrival time of a signal in simulation years."
 )
-async def calculate_signal_arrival(
+async def calculate_signal_arrival_time(
     departure_time: float,
     distance_light_years: float,
     speed_fraction_of_c: float,
 ) -> dict:
-    travel_time = physics.calculate_signal_travel_time(
-        distance_light_years,
-        speed_fraction_of_c,
-    )
-
-    arrival_time = physics.calculate_signal_arrival_time(
+    result = physics.calculate_signal_arrival_time(
         departure_time,
         distance_light_years,
         speed_fraction_of_c,
     )
-
-    return {
-        "travel_time_years": travel_time,
-        "arrival_time": arrival_time,
-    }
+    return {"arrival_time": result}
 
 
 @mcp.tool(
-    description=(
-        "Calculate relativistic travel time, proper time experienced "
-        "aboard the ship, and the Lorentz factor."
-    )
+    description="Calculate the Lorentz factor for a given fraction of light speed."
 )
-async def calculate_relativistic_travel(
+async def calculate_lorentz_factor(
+    speed_fraction_of_c: float,
+) -> dict:
+    result = physics.calculate_lorentz_factor(speed_fraction_of_c)
+    return {"lorentz_factor": result}
+
+
+@mcp.tool(
+    description="Calculate relativistic travel time in the universe reference frame, in years."
+)
+async def calculate_relativistic_travel_time(
     distance_light_years: float,
     speed_fraction_of_c: float,
 ) -> dict:
-    lorentz_factor = physics.calculate_lorentz_factor(
-        speed_fraction_of_c,
-    )
-
-    external_time = physics.calculate_relativistic_travel_time(
+    result = physics.calculate_relativistic_travel_time(
         distance_light_years,
         speed_fraction_of_c,
     )
+    return {"travel_time_years": result}
 
-    proper_time = physics.calculate_proper_travel_time(
+
+@mcp.tool(
+    description="Calculate time experienced aboard a relativistic ship, in years."
+)
+async def calculate_proper_travel_time(
+    distance_light_years: float,
+    speed_fraction_of_c: float,
+) -> dict:
+    result = physics.calculate_proper_travel_time(
         distance_light_years,
         speed_fraction_of_c,
     )
-
-    return {
-        "lorentz_factor": lorentz_factor,
-        "external_travel_time_years": external_time,
-        "proper_travel_time_years": proper_time,
-    }
-
+    return {"proper_travel_time_years": result}
 
 @mcp.tool(
     description=(
