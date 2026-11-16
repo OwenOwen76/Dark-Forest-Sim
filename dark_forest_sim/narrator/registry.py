@@ -328,6 +328,31 @@ class NarratorToolbox:
             ],
         )
 
+        self._register(
+            "calculate_signal_travel_time",
+            "Calculate signal travel time in years, given distance in light-years and speed as a fraction of c.",
+            "data",
+            {
+                "distance_light_years": {"type": "number"},
+                "speed_fraction_of_c": {"type": "number"},
+            },
+            physics.calculate_signal_travel_time,
+            ["distance_light_years", "speed_fraction_of_c"],
+        )
+
+        self._register(
+            "calculate_signal_arrival_time",
+            "Calculate the arrival time of a signal using its departure time, distance in light-years, and speed as a fraction of c.",
+            "data",
+            {
+                "departure_time": {"type": "number"},
+                "distance_light_years": {"type": "number"},
+                "speed_fraction_of_c": {"type": "number"},
+            },
+            physics.calculate_signal_arrival_time,
+            ["departure_time", "distance_light_years", "speed_fraction_of_c"],
+        )
+
     def list_tools(self) -> list[dict]:
         """Return tool information grouped by category."""
 
