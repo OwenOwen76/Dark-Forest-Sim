@@ -353,6 +353,77 @@ class NarratorToolbox:
             ["departure_time", "distance_light_years", "speed_fraction_of_c"],
         )
 
+        self._register(
+            "can_civilization_know_event",
+            "Check whether an event has arrived at a civilization and its information is available.",
+            "data",
+            {
+                "event_id": {"type": "string"},
+                "civilization_id": {"type": "string"},
+            },
+            lambda **kw: data.can_civilization_know_event(u, **kw),
+            ["event_id", "civilization_id"],
+        )
+
+        self._register(
+            "calculate_lorentz_factor",
+            "Calculate relativistic time dilation for a velocity as a fraction of c.",
+            "data",
+            {
+                "speed_fraction_of_c": {"type": "number"},
+            },
+            physics.calculate_lorentz_factor,
+            ["speed_fraction_of_c"],
+        )
+
+        self._register(
+            "calculate_relativistic_travel_time",
+            "Calculate relativistic ship travel time in the universe reference frame, in years.",
+            "data",
+            {
+                "distance_light_years": {"type": "number"},
+                "speed_fraction_of_c": {"type": "number"},
+            },
+            physics.calculate_relativistic_travel_time,
+            ["distance_light_years", "speed_fraction_of_c"],
+        )
+
+        self._register(
+            "calculate_proper_travel_time",
+            "Calculate travel time experienced aboard a relativistic ship, in years.",
+            "data",
+            {
+                "distance_light_years": {"type": "number"},
+                "speed_fraction_of_c": {"type": "number"},
+            },
+            physics.calculate_proper_travel_time,
+            ["distance_light_years", "speed_fraction_of_c"],
+        )
+
+        self._register(
+            "calculate_relativistic_kinetic_energy",
+            "Calculate relativistic kinetic energy in joules.",
+            "data",
+            {
+                "mass_kg": {"type": "number"},
+                "speed_fraction_of_c": {"type": "number"},
+            },
+            physics.calculate_relativistic_kinetic_energy,
+            ["mass_kg", "speed_fraction_of_c"],
+        )
+
+        self._register(
+            "calculate_relativistic_momentum",
+            "Calculate relativistic momentum in kg m/s.",
+            "data",
+            {
+                "mass_kg": {"type": "number"},
+                "speed_fraction_of_c": {"type": "number"},
+            },
+            physics.calculate_relativistic_momentum,
+            ["mass_kg", "speed_fraction_of_c"],
+        )
+
     def list_tools(self) -> list[dict]:
         """Return tool information grouped by category."""
 

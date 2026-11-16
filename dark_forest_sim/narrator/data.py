@@ -162,3 +162,23 @@ def calculate_travel_time(
         raise ValueError("Speed must be finite and positive.")
 
     return round(distance / speed, 1)
+
+def can_civilization_know_event(
+    universe: Universe,
+    event_id: str,
+    civilization_id: str,
+) -> bool:
+    """Check whether an event has reached a civilization."""
+
+    universe.get_event(event_id)
+    universe.get_civilization(civilization_id)
+
+    delivery = universe.deliveries.get((event_id, civilization_id))
+
+    if delivery is None:
+        return False
+
+    return (
+        delivery.status == DeliveryStatus.ARRIVED
+        and delivery.arrival_time <= universe.current_time
+    )

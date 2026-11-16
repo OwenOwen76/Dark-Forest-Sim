@@ -137,3 +137,93 @@ def calculate_signal_arrival_time(
     )
 
     return departure_time + travel_time
+
+SPEED_OF_LIGHT_M_PER_SECOND = 299792458
+
+
+def calculate_lorentz_factor(speed_fraction_of_c: float) -> float:
+    """Calculate the Lorentz factor for a given fraction of light speed."""
+
+    _require_finite("Speed", speed_fraction_of_c)
+
+    if not 0 <= speed_fraction_of_c < 1:
+        raise ValueError("Speed must be between zero and, but not including, c.")
+
+    return 1 / sqrt(1 - speed_fraction_of_c**2)
+
+
+def calculate_relativistic_travel_time(
+    distance_light_years: float,
+    speed_fraction_of_c: float,
+) -> float:
+    """Calculate ship travel time in the universe reference frame, in years."""
+
+    _require_finite("Distance", distance_light_years)
+    _require_finite("Speed", speed_fraction_of_c)
+
+    if distance_light_years < 0:
+        raise ValueError("Distance must be non-negative.")
+
+    if not 0 < speed_fraction_of_c < 1:
+        raise ValueError("Ship speed must be greater than zero and less than c.")
+
+    return distance_light_years / speed_fraction_of_c
+
+
+def calculate_proper_travel_time(
+    distance_light_years: float,
+    speed_fraction_of_c: float,
+) -> float:
+    """Calculate elapsed travel time experienced aboard a relativistic ship."""
+
+    external_time = calculate_relativistic_travel_time(
+        distance_light_years,
+        speed_fraction_of_c,
+    )
+
+    lorentz_factor = calculate_lorentz_factor(speed_fraction_of_c)
+
+    return external_time / lorentz_factor
+
+
+def calculate_relativistic_kinetic_energy(
+    mass_kg: float,
+    speed_fraction_of_c: float,
+) -> float:
+    """Calculate relativistic kinetic energy in joules."""
+
+    _require_finite("Mass", mass_kg)
+    _require_finite("Speed", speed_fraction_of_c)
+
+    if mass_kg <= 0:
+        raise ValueError("Mass must be positive.")
+
+    lorentz_factor = calculate_lorentz_factor(speed_fraction_of_c)
+
+    return (
+        (lorentz_factor - 1)
+        * mass_kg
+        * SPEED_OF_LIGHT_M_PER_SECOND**2
+    )
+
+
+def calculate_relativistic_momentum(
+    mass_kg: float,
+    speed_fraction_of_c: float,
+) -> float:
+    """Calculate relativistic momentum in kg m/s."""
+
+    _require_finite("Mass", mass_kg)
+    _require_finite("Speed", speed_fraction_of_c)
+
+    if mass_kg <= 0:
+        raise ValueError("Mass must be positive.")
+
+    lorentz_factor = calculate_lorentz_factor(speed_fraction_of_c)
+
+    return (
+        lorentz_factor
+        * mass_kg
+        * speed_fraction_of_c
+        * SPEED_OF_LIGHT_M_PER_SECOND
+    )
