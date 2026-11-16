@@ -149,3 +149,14 @@ async def civilization_time_lapse(
         return await runtime.end_turn(body.years)
     except (ValueError, KeyError, TypeError) as exc:
         raise HTTPException(status_code=409, detail=str(exc))
+
+@civilization_router.get("/knowledge")
+async def get_civilization_knowledge(request: Request):
+    runtime = get_runtime(request)
+
+    try:
+        return {
+            "known_events": runtime.civilization_knowledge(),
+        }
+    except (ValueError, KeyError, TypeError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc))

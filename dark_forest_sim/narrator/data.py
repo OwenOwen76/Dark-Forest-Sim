@@ -185,3 +185,50 @@ def can_civilization_know_event(
         delivery.status == DeliveryStatus.ARRIVED
         and delivery.arrival_time <= universe.current_time
     )
+
+def list_known_events(
+    universe: Universe,
+    civilization_id: str,
+) -> list[dict]:
+    """Return only events that have arrived at this civilization."""
+
+    universe.get_civilization(civilization_id)
+
+    known_events = []
+
+    for delivery in universe.list_deliveries():
+        if delivery.recipient_civilization_id != civilization_id:
+            continue
+
+        if delivery.status != DeliveryStatus.ARRIVED:
+            continue
+
+        if delivery.arrival_time > universe.current_time:
+            continue
+
+        event = universe.get_event(delivery.event_id)
+
+        known_events.append({
+            "event_id": event.id,
+            "event_type": event.event_type,
+            "description": event.description,
+            "created_at": event.created_at,
+            "origin": {
+                "x": event.origin.x,
+                "y": event.origin.y,
+                "z": event.origin.z,
+            },
+            "delivery": {
+                "distance": delivery.distance,
+                "departure_time": delivery.departure_time,
+                "arrival_time": delivery.arrival_time,
+            },
+        })
+
+    return sorted(
+        known_events,
+        key=lambda event: (
+            event["delivery"]["arrival_time"],
+            event["event_id"],
+        ),
+    )

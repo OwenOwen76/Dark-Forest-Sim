@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
+from dataclasses import asdict
 
 from ..engine.civilization import CivilizationStatus
 from ..engine.scheduler import CivilizationScheduler
@@ -11,6 +12,7 @@ from ..engine.universe import Universe
 from .persistence import SimulationPersistence
 from .registry import NarratorToolbox
 from .agents import AgentState, AgentStatus, ToolCallRecord, ToolCallStatus
+from . import data
 
 DEFAULT_SAVE_PATH = (
     Path(__file__).resolve().parents[2]
@@ -211,7 +213,16 @@ class NarratorRuntime:
             "name": civilization.name,
             "year": civilization.year,
             "status": civilization.status.value,
+            "resources": asdict(civilization.resources),
         }
+
+    def civilization_knowledge(self):
+        civilization = self.get_active_civilization()
+
+        return data.list_known_events(
+            self.universe,
+            civilization.id,
+        )
 
     async def submit_action(self, description: str):
         description = description.strip()
