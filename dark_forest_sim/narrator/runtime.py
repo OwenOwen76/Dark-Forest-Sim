@@ -1,20 +1,27 @@
 import asyncio
+from copy import deepcopy
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
 from ..engine.civilization import CivilizationStatus
 from ..engine.scheduler import CivilizationScheduler
 from ..engine.universe import Universe
+from .agents import AgentState, AgentStatus, ToolCallRecord
 from .persistence import SimulationPersistence
 from .registry import NarratorToolbox
-
+from .agents import AgentState, AgentStatus, ToolCallRecord, ToolCallStatus
 
 DEFAULT_SAVE_PATH = (
     Path(__file__).resolve().parents[2]
     / "data"
     / "simulation.json"
 )
+
+
+def _timestamp() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 @dataclass(slots=True)
@@ -35,6 +42,13 @@ class NarratorRuntime:
     civilization_histories: dict[str, list] = field(
         default_factory=dict
     )
+    agent_states: dict[str, AgentState] = field(
+        default_factory=dict
+    )
+    tool_call_journal: dict[str, ToolCallRecord] = field(
+        default_factory=dict
+    )
+
     last_action_result: dict | None = None
 
     _action_future: asyncio.Future | None = field(
@@ -67,10 +81,56 @@ class NarratorRuntime:
                 "last_action_result"
             )
 
+            self.agent_states = {
+                civ_id: AgentState.from_dict(data)
+                for civ_id, data in saved.get(
+                    "agent_states", {}
+                ).items()
+            }
+
+            self.tool_call_journal = {
+                call_id: ToolCallRecord.from_dict(data)
+                for call_id, data in saved.get(
+                    "tool_call_journal", {}
+                ).items()
+            }
+
+            # An executing call may have completed externally before
+            # the previous process crashed. Never replay it automatically.
+            for record in self.tool_call_journal.values():
+                if record.status == ToolCallStatus.EXECUTING:
+                    record.status = ToolCallStatus.UNCERTAIN
+                    record.updated_at = _timestamp()
+
+            # Persist recovered states so subsequent restarts retain them.
+            if any(
+                record.status == ToolCallStatus.UNCERTAIN
+                for record in self.tool_call_journal.values()
+            ):
+                self.save()
+
+            # Migrate legacy conversation histories without overwriting
+            # agent states that already exist.
+            for civ_id, history in self.civilization_histories.items():
+                self.agent_states.setdefault(
+                    civ_id,
+                    AgentState(
+                        civilization_id=civ_id,
+                        messages=deepcopy(history),
+                    ),
+                )
+
             # A process cannot resume an asyncio task from a previous
             # process. Preserve its state but mark it interrupted.
             if self.status == "running":
                 self.status = "interrupted"
+
+                if self.active_civilization_id in self.agent_states:
+                    agent = self.agent_states[
+                        self.active_civilization_id
+                    ]
+                    agent.status = AgentStatus.INTERRUPTED
+                    agent.updated_at = _timestamp()
 
             if self.active_civilization_id is not None:
                 civilization = self.universe.get_civilization(
@@ -103,6 +163,8 @@ class NarratorRuntime:
                     self.civilization_histories,
                 "last_action_result": self.last_action_result,
             },
+            agent_states=self.agent_states,
+            tool_call_journal=self.tool_call_journal,
         )
 
     def get_active_civilization(self):
@@ -127,6 +189,14 @@ class NarratorRuntime:
 
             if civilization.status != CivilizationStatus.ACTIVE:
                 raise ValueError("Only awake civilizations can be activated.")
+
+            agent = self.agent_states.setdefault(
+                civilization_id,
+                AgentState(civilization_id=civilization_id),
+            )
+
+            agent.status = AgentStatus.READY
+            agent.updated_at = _timestamp()
 
             self.active_civilization_id = civilization_id
             self.status = "running"
@@ -170,7 +240,6 @@ class NarratorRuntime:
             )
             future = self._action_future
 
-            # Save before waiting for the narrator.
             self.save()
 
         return await asyncio.shield(future)
@@ -200,13 +269,136 @@ class NarratorRuntime:
             self._action_future = None
             self.last_action_result = result
 
-            # This also works after a restart, when no Future exists.
             self.save()
 
             if future is not None and not future.done():
                 future.set_result(result)
 
             return result
+
+    def register_tool_call(
+        self,
+        call_id: str,
+        civilization_id: str,
+        tool_name: str,
+        arguments: dict,
+    ) -> ToolCallRecord:
+        """Durably register a tool call before execution."""
+
+        if call_id in self.tool_call_journal:
+            raise ValueError(f"Tool call already exists: {call_id}")
+
+        if not tool_name.strip():
+            raise ValueError("Tool name cannot be empty.")
+
+        self.universe.get_civilization(civilization_id)
+
+        agent = self.agent_states.setdefault(
+            civilization_id,
+            AgentState(civilization_id=civilization_id),
+        )
+
+        record = ToolCallRecord(
+            call_id=call_id,
+            civilization_id=civilization_id,
+            tool_name=tool_name,
+            arguments=deepcopy(arguments),
+            status=ToolCallStatus.PENDING,
+        )
+
+        self.tool_call_journal[call_id] = record
+
+        if call_id not in agent.pending_tool_call_ids:
+            agent.pending_tool_call_ids.append(call_id)
+
+        agent.status = AgentStatus.WAITING_FOR_TOOL
+        agent.updated_at = _timestamp()
+
+        self.save()
+        return record
+
+    def mark_tool_call_executing(
+        self,
+        call_id: str,
+    ) -> ToolCallRecord:
+        """Record execution intent before invoking the external tool."""
+
+        record = self._get_tool_call(call_id)
+
+        if record.status != ToolCallStatus.PENDING:
+            raise ValueError(
+                f"Cannot execute tool call in state: {record.status}"
+            )
+
+        record.status = ToolCallStatus.EXECUTING
+        record.attempts += 1
+        record.updated_at = _timestamp()
+
+        self.save()
+        return record
+
+    def complete_tool_call(
+        self,
+        call_id: str,
+        result,
+    ) -> ToolCallRecord:
+        """Persist a successful tool result."""
+
+        record = self._get_tool_call(call_id)
+
+        if record.status != ToolCallStatus.EXECUTING:
+            raise ValueError(
+                f"Cannot complete tool call in state: {record.status}"
+            )
+
+        record.status = ToolCallStatus.COMPLETED
+        record.result = deepcopy(result)
+        record.error = None
+        record.updated_at = _timestamp()
+
+        self._finish_tool_call(record)
+        self.save()
+        return record
+
+    def fail_tool_call(
+        self,
+        call_id: str,
+        error: str,
+    ) -> ToolCallRecord:
+        """Persist a failed tool execution."""
+
+        record = self._get_tool_call(call_id)
+
+        if record.status != ToolCallStatus.EXECUTING:
+            raise ValueError(
+                f"Cannot fail tool call in state: {record.status}"
+            )
+
+        record.status = ToolCallStatus.FAILED
+        record.error = error
+        record.updated_at = _timestamp()
+
+        self._finish_tool_call(record)
+        self.save()
+        return record
+
+    def _get_tool_call(self, call_id: str) -> ToolCallRecord:
+        try:
+            return self.tool_call_journal[call_id]
+        except KeyError:
+            raise ValueError(f"Unknown tool call: {call_id}") from None
+
+    def _finish_tool_call(self, record: ToolCallRecord) -> None:
+        agent = self.agent_states.get(record.civilization_id)
+
+        if agent is None:
+            return
+
+        if record.call_id in agent.pending_tool_call_ids:
+            agent.pending_tool_call_ids.remove(record.call_id)
+
+        agent.status = AgentStatus.THINKING
+        agent.updated_at = _timestamp()
 
     async def end_turn(self, years: int):
         async with self._lock:
@@ -222,6 +414,12 @@ class NarratorRuntime:
                 civilization.id,
                 years,
             )
+
+            agent = self.agent_states.get(civilization.id)
+
+            if agent is not None:
+                agent.status = AgentStatus.SLEEPING
+                agent.updated_at = _timestamp()
 
             self.active_civilization_id = None
             self.status = "stopped"
