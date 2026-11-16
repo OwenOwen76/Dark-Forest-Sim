@@ -3,6 +3,7 @@ import os
 import tempfile
 from pathlib import Path
 from typing import Any
+from math import isfinite
 
 from ..engine.civilization import (
     Civilization,
@@ -115,7 +116,11 @@ class SimulationPersistence:
 
         version = data.get("schema_version")
 
-        if version not in SUPPORTED_SCHEMA_VERSIONS:
+        if (
+            isinstance(version, bool)
+            or not isinstance(version, int)
+            or version not in SUPPORTED_SCHEMA_VERSIONS
+        ):
             raise ValueError(
                 f"Unsupported save version: {version}. "
                 f"Supported versions: {sorted(SUPPORTED_SCHEMA_VERSIONS)}."
@@ -124,23 +129,63 @@ class SimulationPersistence:
         try:
             universe = self._deserialize_universe(data["universe"])
 
+            scheduler_data = data["scheduler"]
+
+            if not isinstance(scheduler_data, dict):
+                raise ValueError("scheduler must be a dictionary.")
+
+            wake_times = scheduler_data["wake_times"]
+
+            if not isinstance(wake_times, dict):
+                raise ValueError("scheduler wake_times must be a dictionary.")
+
             scheduler = CivilizationScheduler()
-            scheduler.wake_times = {
-                str(civ_id): float(wake_time)
-                for civ_id, wake_time
-                in data["scheduler"]["wake_times"].items()
-            }
+
+            for civilization_id, wake_time in wake_times.items():
+                if not isinstance(civilization_id, str):
+                    raise ValueError("Wake schedule IDs must be strings.")
+
+                if (
+                    isinstance(wake_time, bool)
+                    or not isinstance(wake_time, (int, float))
+                ):
+                    raise ValueError(
+                        f"Wake time for {civilization_id!r} must be numeric."
+                    )
+
+                if not isfinite(wake_time) or wake_time < 0:
+                    raise ValueError(
+                        f"Wake time for {civilization_id!r} "
+                        "must be finite and non-negative."
+                    )
+
+                civilization = universe.get_civilization(civilization_id)
+
+                scheduler.wake_times[civilization_id] = float(wake_time)
+
+            for civilization in universe.civilizations.values():
+                if (
+                    civilization.status == CivilizationStatus.SLEEPING
+                    and civilization.id not in scheduler.wake_times
+                ):
+                    raise ValueError(
+                        f"Sleeping civilization {civilization.id!r} "
+                        "has no wake schedule."
+                    )
 
             simulation = data["simulation"]
+
+            if not isinstance(simulation, dict):
+                raise ValueError("simulation must be a dictionary.")
 
             agent_states = data.get("agent_states", {})
             tool_call_journal = data.get("tool_call_journal", {})
 
             if not isinstance(agent_states, dict):
-                raise ValueError("agent_states must be a dictionary")
+                raise ValueError("agent_states must be a dictionary.")
 
             if not isinstance(tool_call_journal, dict):
-                raise ValueError("tool_call_journal must be a dictionary")
+                raise ValueError("tool_call_journal must be a dictionary.")
 
             return {
                 "universe": universe,
@@ -151,7 +196,7 @@ class SimulationPersistence:
                 "loaded_schema_version": version,
             }
 
-        except (KeyError, TypeError, ValueError) as exc:
+        except (KeyError, TypeError, ValueError, OverflowError) as exc:
             raise ValueError(
                 f"Simulation save has an invalid structure: {exc}"
             ) from exc
@@ -219,9 +264,28 @@ class SimulationPersistence:
 
     @staticmethod
     def _deserialize_universe(data: dict) -> Universe:
+        if not isinstance(data, dict):
+            raise ValueError("universe must be a dictionary.")
+
+        civilizations_data = data["civilizations"]
+        events_data = data["events"]
+        deliveries_data = data["deliveries"]
+
+        if not isinstance(civilizations_data, list):
+            raise ValueError("civilizations must be a list.")
+
+        if not isinstance(events_data, list):
+            raise ValueError("events must be a list.")
+
+        if not isinstance(deliveries_data, list):
+            raise ValueError("deliveries must be a list.")
+
         universe = Universe(current_time=data["current_time"])
 
-        for item in data["civilizations"]:
+        for item in civilizations_data:
+            if not isinstance(item, dict):
+                raise ValueError("Civilization records must be dictionaries.")
+
             position = Position(**item["position"])
             resources = CivilizationResources(**item.get("resources", {}))
 
@@ -236,7 +300,12 @@ class SimulationPersistence:
 
             universe.add_civilization(civilization)
 
-        for item in data["events"]:
+        for item in events_data:
+            if not isinstance(item, dict):
+                raise ValueError("Event records must be dictionaries.")
+
+            targets = item["target_civilization_ids"]
+
             event = Event(
                 id=item["id"],
                 event_type=item["event_type"],
@@ -245,15 +314,16 @@ class SimulationPersistence:
                 origin=Position(**item["origin"]),
                 propagation_speed=item["propagation_speed"],
                 target_civilization_ids=(
-                    tuple(item["target_civilization_ids"])
-                    if item["target_civilization_ids"] is not None
-                    else None
+                    tuple(targets) if targets is not None else None
                 ),
             )
 
             universe.add_event(event)
 
-        for item in data["deliveries"]:
+        for item in deliveries_data:
+            if not isinstance(item, dict):
+                raise ValueError("Delivery records must be dictionaries.")
+
             delivery = EventDelivery(
                 event_id=item["event_id"],
                 recipient_civilization_id=item[
@@ -265,10 +335,30 @@ class SimulationPersistence:
                 status=DeliveryStatus(item["status"]),
             )
 
+            if delivery.event_id not in universe.events:
+                raise ValueError(
+                    f"Delivery references unknown event {delivery.event_id!r}."
+                )
+
+            if (
+                delivery.recipient_civilization_id
+                not in universe.civilizations
+            ):
+                raise ValueError(
+                    "Delivery references unknown civilization "
+                    f"{delivery.recipient_civilization_id!r}."
+                )
+
             key = (
                 delivery.event_id,
                 delivery.recipient_civilization_id,
             )
+
+            if key in universe.deliveries:
+                raise ValueError(
+                    f"Duplicate delivery for event {key[0]!r} "
+                    f"and civilization {key[1]!r}."
+                )
 
             universe.deliveries[key] = delivery
 
