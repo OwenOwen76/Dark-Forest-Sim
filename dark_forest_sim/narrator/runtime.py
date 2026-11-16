@@ -8,7 +8,6 @@ from uuid import uuid4
 from ..engine.civilization import CivilizationStatus
 from ..engine.scheduler import CivilizationScheduler
 from ..engine.universe import Universe
-from .agents import AgentState, AgentStatus, ToolCallRecord
 from .persistence import SimulationPersistence
 from .registry import NarratorToolbox
 from .agents import AgentState, AgentStatus, ToolCallRecord, ToolCallStatus
