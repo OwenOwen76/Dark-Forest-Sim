@@ -39,22 +39,33 @@ class SimulationPersistence:
     ) -> None:
         """Atomically save the complete durable simulation state."""
 
-        self.path.parent.mkdir(parents=True, exist_ok=True)
+        if not isinstance(runtime_state, dict):
+            raise ValueError("Runtime state must be a dictionary.")
+
+        self._validate_scheduler_for_save(universe, scheduler)
+
+        if simulation_engine_state is None:
+            simulation_engine_state = {}
+
+        if not isinstance(simulation_engine_state, dict):
+            raise ValueError(
+                "Simulation engine state must be a dictionary."
+            )
 
         data = {
             "schema_version": SCHEMA_VERSION,
             "simulation": runtime_state,
             "universe": self._serialize_universe(universe),
             "scheduler": {
-                "wake_times": scheduler.wake_times,
-                "sleep_started_at": scheduler.sleep_started_at,
-                "sleep_start_local_year": scheduler.sleep_start_local_year,
+                "wake_times": dict(scheduler.wake_times),
+                "sleep_started_at": dict(
+                    scheduler.sleep_started_at
+                ),
+                "sleep_start_local_year": dict(
+                    scheduler.sleep_start_local_year
+                ),
             },
-            "simulation_engine": (
-                simulation_engine_state
-                if simulation_engine_state is not None
-                else {}
-            ),
+            "simulation_engine": simulation_engine_state,
             "agent_states": self._serialize_records(agent_states),
             "tool_call_journal": self._serialize_records(
                 tool_call_journal
@@ -67,6 +78,8 @@ class SimulationPersistence:
             ensure_ascii=False,
             allow_nan=False,
         )
+
+        self.path.parent.mkdir(parents=True, exist_ok=True)
 
         temporary_path = None
 
@@ -90,6 +103,103 @@ class SimulationPersistence:
         finally:
             if temporary_path is not None:
                 temporary_path.unlink(missing_ok=True)
+
+    @staticmethod
+    def _validate_scheduler_for_save(
+        universe: Universe,
+        scheduler: CivilizationScheduler,
+    ) -> None:
+        """Reject incomplete or inconsistent scheduler state."""
+
+        if not isinstance(scheduler, CivilizationScheduler):
+            raise ValueError(
+                "Scheduler must be a CivilizationScheduler."
+            )
+
+        wake_times = scheduler.wake_times
+        sleep_started_at = scheduler.sleep_started_at
+        sleep_start_local_year = (
+            scheduler.sleep_start_local_year
+        )
+
+        if not all(
+            isinstance(value, dict)
+            for value in (
+                wake_times,
+                sleep_started_at,
+                sleep_start_local_year,
+            )
+        ):
+            raise ValueError(
+                "Scheduler metadata must use dictionaries."
+            )
+
+        scheduled_ids = set(wake_times)
+
+        if (
+            scheduled_ids != set(sleep_started_at)
+            or scheduled_ids != set(sleep_start_local_year)
+        ):
+            raise ValueError(
+                "Scheduler metadata dictionaries must contain "
+                "the same civilization IDs."
+            )
+
+        for civilization_id in scheduled_ids:
+            if not isinstance(civilization_id, str):
+                raise ValueError(
+                    "Scheduler civilization IDs must be strings."
+                )
+
+            civilization = universe.get_civilization(
+                civilization_id
+            )
+
+            if civilization.status != CivilizationStatus.SLEEPING:
+                raise ValueError(
+                    f"Civilization {civilization_id!r} has a "
+                    "wake schedule but is not sleeping."
+                )
+
+            SimulationPersistence._validate_time(
+                wake_times[civilization_id],
+                f"Wake time for {civilization_id!r}",
+            )
+
+            sleep_start = (
+                SimulationPersistence._validate_time(
+                    sleep_started_at[civilization_id],
+                    f"Sleep start for {civilization_id!r}",
+                )
+            )
+
+            if sleep_start > universe.current_time:
+                raise ValueError(
+                    f"Sleep start for {civilization_id!r} "
+                    "is later than the current universe time."
+                )
+
+            local_year = sleep_start_local_year[civilization_id]
+
+            if (
+                isinstance(local_year, bool)
+                or not isinstance(local_year, (int, float))
+                or not isfinite(local_year)
+            ):
+                raise ValueError(
+                    f"Sleep start local year for "
+                    f"{civilization_id!r} must be finite and numeric."
+                )
+
+        for civilization in universe.civilizations.values():
+            if (
+                civilization.status == CivilizationStatus.SLEEPING
+                and civilization.id not in scheduled_ids
+            ):
+                raise ValueError(
+                    f"Sleeping civilization {civilization.id!r} "
+                    "has no wake schedule."
+                )
 
     @staticmethod
     def _serialize_records(records: dict | None) -> dict:
@@ -258,7 +368,7 @@ class SimulationPersistence:
         universe timestamps.
 
         Older schemas did not preserve the actual time at which a
-        civilization went to sleep. Consequently, migration preserves
+        civilization went to sleep. Migration therefore preserves
         the remaining intended sleep duration, starting from the
         saved universe time.
         """
