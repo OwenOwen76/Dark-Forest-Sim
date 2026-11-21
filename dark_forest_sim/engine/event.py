@@ -56,8 +56,6 @@ class Event:
                 "Propagation speed must be finite and positive."
             )
 
-        self.created_at = round(self.created_at, 1)
-
         if self.target_civilization_ids is not None:
             if not isinstance(self.target_civilization_ids, (tuple, list)):
                 raise TypeError("Event targets must be a list or tuple.")

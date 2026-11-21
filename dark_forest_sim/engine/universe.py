@@ -26,8 +26,6 @@ class Universe:
         if not isfinite(self.current_time) or self.current_time < 0:
             raise ValueError("Universe time must be finite and non-negative.")
 
-        self.current_time = round(self.current_time, 1)
-
     # Civilization management
 
     def add_civilization(self, civilization: Civilization) -> None:
@@ -98,7 +96,7 @@ class Universe:
 
             distance = event.origin.distance_to(civilization.position)
             travel_time = distance / event.propagation_speed
-            arrival_time = round(event.created_at + travel_time, 1)
+            arrival_time = event.created_at + travel_time
 
             delivery = EventDelivery(
                 event_id=event.id,
@@ -144,8 +142,6 @@ class Universe:
 
         if not isfinite(to_time):
             raise ValueError("Target time must be finite.")
-
-        to_time = round(to_time, 1)
 
         if to_time < self.current_time:
             raise ValueError("Universe time cannot move backwards.")

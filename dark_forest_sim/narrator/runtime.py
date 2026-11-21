@@ -545,3 +545,37 @@ class NarratorRuntime:
                 "civilization_name": civilization.name,
                 "requested_wake_time": wake_time,
             }
+
+    async def resume_interrupted(self):
+        """Resume a previously active civilization after process recovery."""
+
+        async with self._lock:
+            if self.status != "interrupted":
+                raise ValueError("Runtime is not in an interrupted state.")
+
+            if self.active_civilization_id is None:
+                raise ValueError(
+                    "There is no active civilization to resume."
+                )
+
+            if self.pending_action is not None:
+                raise ValueError(
+                    "Resolve the pending action before resuming."
+                )
+
+            civilization = self.get_active_civilization()
+
+            agent = self.agent_states.setdefault(
+                civilization.id,
+                AgentState(civilization_id=civilization.id),
+            )
+
+            # Do not replay uncertain tool calls or pretend an old LLM
+            # request completed. Resume from the persisted conversation.
+            agent.status = AgentStatus.READY
+            agent.updated_at = _timestamp()
+
+            self.status = "running"
+            self.save()
+
+            return self.civilization_context()

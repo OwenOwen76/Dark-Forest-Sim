@@ -164,7 +164,7 @@ def calculate_travel_time(
     if not isfinite(speed) or speed <= 0:
         raise ValueError("Speed must be finite and positive.")
 
-    return round(distance / speed, 1)
+    return distance / speed
 
 def can_civilization_know_event(
     universe: Universe,

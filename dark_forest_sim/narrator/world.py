@@ -67,7 +67,7 @@ def modify_civilization(
                 "Provide all three coordinates: x, y, and z."
             )
 
-        updated_position = Position(x, y, z)
+        updated_position = Position(x, y, z) #type: ignore
 
     if name is not None:
         if not isinstance(name, str):
@@ -108,6 +108,7 @@ def destroy_civilization(
 
     civilization.status = CivilizationStatus.DESTROYED
     scheduler.wake_times.pop(civilization_id, None)
+    scheduler._clear_schedule(civilization_id)
 
     return {
         "id": civilization.id,
@@ -177,10 +178,19 @@ def propagate_event(
 def advance_time(
     universe: Universe,
     to_time: float,
+    simulation_engine=None,
 ) -> dict:
-    """Advance the universe's internal timeline."""
+    update = (
+        simulation_engine.advance_to(to_time)
+        if simulation_engine is not None
+        else None
+    )
 
-    arrivals = universe.advance_time(to_time)
+    arrivals = (
+        update.arrivals
+        if update is not None
+        else universe.advance_time(to_time)
+    )
 
     return {
         "current_time": universe.current_time,
@@ -192,8 +202,24 @@ def advance_time(
             }
             for delivery in arrivals
         ],
+        "civilization_updates": (
+            [
+                {
+                    "civilization_id": report.civilization_id,
+                    "population_before": report.population_before,
+                    "population_after": report.population_after,
+                    "generated_joules": report.generated_joules,
+                    "demanded_joules": report.demanded_joules,
+                    "supplied_joules": report.supplied_joules,
+                    "unmet_demand_joules": report.unmet_demand_joules,
+                    "waste_heat_joules": report.waste_heat_joules,
+                }
+                for report in update.civilizations
+            ]
+            if update is not None
+            else []
+        ),
     }
-
 
 def sleep_civilization(
     universe: Universe,
@@ -242,7 +268,12 @@ def advance_when_idle(
 ) -> dict:
     """Advance to the next scheduled wake or pending event arrival."""
 
-    update = scheduler.advance_when_idle(universe)
+    simulation_engine=None
+
+    update = scheduler.advance_when_idle(
+        universe,
+        simulation_engine,
+    )
 
     return {
         "current_time": universe.current_time,

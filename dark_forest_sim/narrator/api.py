@@ -61,6 +61,15 @@ civilization_router = APIRouter(
 )
 
 
+@civilization_router.post("/resume")
+async def resume_runtime(request: Request):
+    runtime = get_runtime(request)
+
+    try:
+        return await runtime.resume_interrupted()
+    except (ValueError, KeyError, TypeError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+
 class ActivateRequest(BaseModel):
     civilization_id: str
 
