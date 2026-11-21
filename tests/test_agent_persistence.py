@@ -133,4 +133,4 @@ def test_empty_agent_data_is_saved(tmp_path):
 
     assert loaded["agent_states"] == {}
     assert loaded["tool_call_journal"] == {}
-    assert loaded["loaded_schema_version"] == 2
+    assert loaded["loaded_schema_version"] == 3

@@ -198,11 +198,15 @@ async def test_civilization_context_matches_active_agent(tmp_path):
             "z": 3,
         },
         "status": "active",
-        "resources": {
-            "population": 0,
-            "annual_population_growth_rate": 0.0,
-            "energy_production_watts": 0.0,
-            "energy_reserve_joules": 0.0,
-            "energy_consumption_watts_per_person": 0.0,
+        "state": {
+            "demographics": {
+                "population": 0,
+                "annual_population_growth_rate": 0.0,
+            },
+            "energy": {
+                "energy_production_watts": 0.0,
+                "energy_reserve_joules": 0.0,
+                "energy_consumption_watts_per_person": 0.0,
+            },
         },
     }

@@ -134,7 +134,7 @@ class NarratorToolbox:
 
         self._register_group(
             "manage_civilization",
-            "Create, modify, update the resources of, or destroy a civilization.",
+            "Create, modify, update the authoritative state of, or destroy a civilization.",
             "world",
             {
                 "create": self._operation(
@@ -297,7 +297,7 @@ class NarratorToolbox:
                     lambda **kw: data.list_civilizations(u),
                 ),
                 "inspect_civilization": self._operation(
-                    "Inspect one civilization, including its resources.",
+                    "Inspect one civilization, including its authoritative state.",
                     {"civilization_id": string},
                     lambda **kw: data.inspect_civilization(u, **kw),
                     ("civilization_id",),

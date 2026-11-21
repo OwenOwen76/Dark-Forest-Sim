@@ -35,7 +35,7 @@ def list_civilizations(universe: Universe) -> list[dict]:
             },
             "year": civ.year,
             "status": civ.status.value,
-            "resources": asdict(civ.resources),
+            "state": asdict(civ.state),
         }
         for civ in universe.list_civilizations()
     ]
@@ -59,7 +59,7 @@ def inspect_civilization(
         },
         "year": civ.year,
         "status": civ.status.value,
-        "resources": asdict(civ.resources),
+        "state": asdict(civ.state),
     }
 
 

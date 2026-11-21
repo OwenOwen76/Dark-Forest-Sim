@@ -1,8 +1,5 @@
 import pytest
 
-from dark_forest_sim.engine.civilization import (
-    CivilizationResources,
-)
 from dark_forest_sim.engine.scheduler import CivilizationScheduler
 from dark_forest_sim.engine.space import Position
 from dark_forest_sim.engine.civilization import Civilization
@@ -267,60 +264,6 @@ def test_empty_state_update_is_rejected(toolbox):
     assert result["ok"] is False
 
 
-def test_resource_update_can_change_one_field(toolbox):
-    tools, universe = toolbox
-    universe.add_civilization(
-        Civilization(
-            id="humanity",
-            name="Humanity",
-            position=Position(0, 0, 0),
-            year=2026,
-            resources=CivilizationResources(population=100),
-        )
-    )
-
-    result = tools.call(
-        "manage_civilization",
-        {
-            "operation": "update_resources",
-            "civilization_id": "humanity",
-            "population": 200,
-        },
-    )
-
-    assert result["ok"] is True
-    assert universe.get_civilization("humanity").resources.population == 200
-
-
-def test_invalid_resource_update_does_not_partially_mutate(toolbox):
-    tools, universe = toolbox
-    universe.add_civilization(
-        Civilization(
-            id="humanity",
-            name="Humanity",
-            position=Position(0, 0, 0),
-            year=2026,
-            resources=CivilizationResources(population=100),
-        )
-    )
-
-    result = tools.call(
-        "manage_civilization",
-        {
-            "operation": "update_resources",
-            "civilization_id": "humanity",
-            "population": 200,
-            "energy_reserve_joules": -1,
-        },
-    )
-
-    assert result["ok"] is False
-
-    resources = universe.get_civilization("humanity").resources
-    assert resources.population == 100
-    assert resources.energy_reserve_joules == 0
-
-
 def test_invalid_operation_is_rejected(toolbox):
     tools, _ = toolbox
 
@@ -349,30 +292,7 @@ def test_irrelevant_arguments_are_rejected(toolbox):
 
     assert result["ok"] is False
 
-
-def test_empty_resource_update_is_rejected(toolbox):
-    tools, universe = toolbox
-    universe.add_civilization(
-        Civilization(
-            id="humanity",
-            name="Humanity",
-            position=Position(0, 0, 0),
-            year=2026,
-        )
-    )
-
-    result = tools.call(
-        "manage_civilization",
-        {
-            "operation": "update_resources",
-            "civilization_id": "humanity",
-        },
-    )
-
-    assert result["ok"] is False
-
-
-def test_query_civilization_includes_resources(toolbox):
+def test_query_civilization_includes_state(toolbox):
     tools, universe = toolbox
     universe.add_civilization(
         Civilization(
@@ -392,7 +312,11 @@ def test_query_civilization_includes_resources(toolbox):
     )
 
     assert result["ok"] is True
-    assert result["result"]["state"]["demographics"]["population"] == 0
+
+    state = result["result"]["state"]
+
+    assert state["demographics"]["population"] == 0
+    assert state["energy"]["energy_production_watts"] == 0
 
 
 def test_calculate_dispatches_to_distance(toolbox):
