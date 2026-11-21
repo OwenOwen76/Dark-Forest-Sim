@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 from ..engine.scheduler import CivilizationScheduler
+from ..engine.simulation import SimulationEngine
 from ..engine.universe import Universe
 from . import data, economics, physics, technology, world
 
@@ -31,10 +32,22 @@ class NarratorToolbox:
         universe: Universe,
         scheduler: CivilizationScheduler,
         on_change: Callable[[], None] | None = None,
+        simulation_engine: SimulationEngine | None = None,
     ):
         self._universe = universe
         self._scheduler = scheduler
         self._on_change = on_change
+        self._simulation_engine = (
+            simulation_engine
+            if simulation_engine is not None
+            else SimulationEngine(universe)
+        )
+
+        if self._simulation_engine.universe is not universe:
+            raise ValueError(
+                "Simulation engine must belong to the supplied universe."
+            )
+
         self._tools: dict[str, Tool] = {}
         self._register_tools()
 
@@ -97,6 +110,7 @@ class NarratorToolbox:
     def _register_tools(self) -> None:
         u = self._universe
         s = self._scheduler
+        engine = self._simulation_engine
 
         string = {"type": "string"}
         number = {"type": "number"}
@@ -245,15 +259,25 @@ class NarratorToolbox:
             "world",
             {
                 "advance_time": self._operation(
-                    "Advance the universe timeline to an absolute time.",
+                    "Advance the universe timeline to an absolute time, "
+                    "updating all civilization simulation domains.",
                     {"to_time": number},
-                    lambda **kw: world.advance_time(u, **kw),
+                    lambda **kw: world.advance_time(
+                        u,
+                        simulation_engine=engine,
+                        **kw,
+                    ),
                     ("to_time",),
                 ),
                 "advance_when_idle": self._operation(
-                    "Advance to the next scheduled wake or pending event arrival.",
+                    "Advance to the next scheduled wake or pending event arrival, "
+                    "updating all civilization simulation domains.",
                     {},
-                    lambda **kw: world.advance_when_idle(u, s),
+                    lambda **kw: world.advance_when_idle(
+                        u,
+                        s,
+                        simulation_engine=engine,
+                    ),
                 ),
                 "sleep": self._operation(
                     "Put a civilization to sleep for a positive number of years.",

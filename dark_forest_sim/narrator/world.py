@@ -9,6 +9,7 @@ from ..engine.civilization import (
 )
 from ..engine.event import Event
 from ..engine.scheduler import CivilizationScheduler
+from ..engine.simulation import SimulationEngine
 from ..engine.space import Position
 from ..engine.universe import Universe
 
@@ -67,7 +68,7 @@ def modify_civilization(
                 "Provide all three coordinates: x, y, and z."
             )
 
-        updated_position = Position(x, y, z) #type: ignore
+        updated_position = Position(x, y, z)  # type: ignore
 
     if name is not None:
         if not isinstance(name, str):
@@ -107,7 +108,6 @@ def destroy_civilization(
     civilization = universe.get_civilization(civilization_id)
 
     civilization.status = CivilizationStatus.DESTROYED
-    scheduler.wake_times.pop(civilization_id, None)
     scheduler._clear_schedule(civilization_id)
 
     return {
@@ -178,19 +178,21 @@ def propagate_event(
 def advance_time(
     universe: Universe,
     to_time: float,
-    simulation_engine=None,
+    simulation_engine: SimulationEngine | None = None,
 ) -> dict:
-    update = (
-        simulation_engine.advance_to(to_time)
-        if simulation_engine is not None
-        else None
-    )
+    """Advance the universe and all active simulation domains."""
 
-    arrivals = (
-        update.arrivals
-        if update is not None
-        else universe.advance_time(to_time)
-    )
+    if simulation_engine is not None:
+        if simulation_engine.universe is not universe:
+            raise ValueError(
+                "Simulation engine belongs to a different universe."
+            )
+
+        update = simulation_engine.advance_to(to_time)
+        arrivals = update.arrivals
+    else:
+        arrivals = universe.advance_time(to_time)
+        update = None
 
     return {
         "current_time": universe.current_time,
@@ -220,6 +222,7 @@ def advance_time(
             else []
         ),
     }
+
 
 def sleep_civilization(
     universe: Universe,
@@ -265,10 +268,9 @@ def wake_civilization(
 def advance_when_idle(
     universe: Universe,
     scheduler: CivilizationScheduler,
+    simulation_engine: SimulationEngine | None = None,
 ) -> dict:
-    """Advance to the next scheduled wake or pending event arrival."""
-
-    simulation_engine=None
+    """Advance to the next wake or event arrival and simulate elapsed time."""
 
     update = scheduler.advance_when_idle(
         universe,
@@ -294,6 +296,7 @@ def advance_when_idle(
             for civilization in update.awakened
         ],
     }
+
 
 def update_civilization_state(
     universe: Universe,

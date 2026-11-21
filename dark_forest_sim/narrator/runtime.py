@@ -7,6 +7,7 @@ from uuid import uuid4
 
 from ..engine.civilization import CivilizationStatus
 from ..engine.scheduler import CivilizationScheduler
+from ..engine.simulation import SimulationEngine
 from ..engine.universe import Universe
 from .persistence import SimulationPersistence
 from .registry import NarratorToolbox
@@ -34,6 +35,7 @@ class NarratorRuntime:
 
     toolbox: NarratorToolbox = field(init=False)
     persistence: SimulationPersistence = field(init=False)
+    simulation_engine: SimulationEngine = field(init=False)
 
     active_civilization_id: str | None = None
     pending_action: dict | None = None
@@ -62,6 +64,7 @@ class NarratorRuntime:
         self.persistence = SimulationPersistence(self.save_path)
 
         saved = self.persistence.load()
+        simulation_engine_state = {}
 
         if saved is not None:
             self.universe = saved["universe"]
@@ -81,33 +84,24 @@ class NarratorRuntime:
                 "last_action_result"
             )
 
+            simulation_engine_state = saved.get(
+                "simulation_engine_state",
+                {},
+            )
+
             self.agent_states = {
-                civ_id: AgentState.from_dict(data)
-                for civ_id, data in saved.get(
+                civ_id: AgentState.from_dict(agent_data)
+                for civ_id, agent_data in saved.get(
                     "agent_states", {}
                 ).items()
             }
 
             self.tool_call_journal = {
-                call_id: ToolCallRecord.from_dict(data)
-                for call_id, data in saved.get(
+                call_id: ToolCallRecord.from_dict(record_data)
+                for call_id, record_data in saved.get(
                     "tool_call_journal", {}
                 ).items()
             }
-
-            # An executing call may have completed externally before
-            # the previous process crashed. Never replay it automatically.
-            for record in self.tool_call_journal.values():
-                if record.status == ToolCallStatus.EXECUTING:
-                    record.status = ToolCallStatus.UNCERTAIN
-                    record.updated_at = _timestamp()
-
-            # Persist recovered states so subsequent restarts retain them.
-            if any(
-                record.status == ToolCallStatus.UNCERTAIN
-                for record in self.tool_call_journal.values()
-            ):
-                self.save()
 
             # Migrate legacy conversation histories without overwriting
             # agent states that already exist.
@@ -119,6 +113,24 @@ class NarratorRuntime:
                         messages=deepcopy(history),
                     ),
                 )
+
+        # The engine must be initialized before recovery saves occur.
+        # This ensures every subsequent save preserves its fractional clocks.
+        self.simulation_engine = SimulationEngine(
+            self.universe,
+            simulation_engine_state,
+        )
+
+        if saved is not None:
+            recovery_required = False
+
+            # An executing call may have completed externally before
+            # the previous process crashed. Never replay it automatically.
+            for record in self.tool_call_journal.values():
+                if record.status == ToolCallStatus.EXECUTING:
+                    record.status = ToolCallStatus.UNCERTAIN
+                    record.updated_at = _timestamp()
+                    recovery_required = True
 
             # A process cannot resume an asyncio task from a previous
             # process. Preserve its state but mark it interrupted.
@@ -132,6 +144,8 @@ class NarratorRuntime:
                     agent.status = AgentStatus.INTERRUPTED
                     agent.updated_at = _timestamp()
 
+                recovery_required = True
+
             if self.active_civilization_id is not None:
                 civilization = self.universe.get_civilization(
                     self.active_civilization_id
@@ -142,19 +156,28 @@ class NarratorRuntime:
                         "Saved active civilization is not awake."
                     )
 
+            if recovery_required:
+                self.save()
+
         self.toolbox = NarratorToolbox(
             self.universe,
             self.scheduler,
-            on_change=self._handle_world_change
+            on_change=self._handle_world_change,
+            simulation_engine=self.simulation_engine,
         )
 
     def _handle_world_change(self) -> None:
         civilization_id = self.active_civilization_id
 
         if civilization_id is not None:
-            civilization = self.universe.civilizations.get(civilization_id)
+            civilization = self.universe.civilizations.get(
+                civilization_id
+            )
 
-            if civilization is None or civilization.status != CivilizationStatus.ACTIVE:
+            if (
+                civilization is None
+                or civilization.status != CivilizationStatus.ACTIVE
+            ):
                 agent = self.agent_states.get(civilization_id)
 
                 if agent is not None:
@@ -171,7 +194,8 @@ class NarratorRuntime:
 
                 if (
                     self.pending_action is not None
-                    and self.pending_action.get("civilization_id") == civilization_id
+                    and self.pending_action.get("civilization_id")
+                    == civilization_id
                 ):
                     result = {
                         "proposal_id": self.pending_action["proposal_id"],
@@ -215,6 +239,7 @@ class NarratorRuntime:
             },
             agent_states=self.agent_states,
             tool_call_journal=self.tool_call_journal,
+            simulation_engine_state=self.simulation_engine.to_dict(),
         )
 
     def get_active_civilization(self):

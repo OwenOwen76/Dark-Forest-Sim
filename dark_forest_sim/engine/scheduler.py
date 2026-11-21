@@ -42,6 +42,7 @@ class CivilizationScheduler:
         wake_time = float(universe.current_time + years)
 
         civilization.status = CivilizationStatus.SLEEPING
+
         self.wake_times[civilization_id] = wake_time
         self.sleep_started_at[civilization_id] = float(
             universe.current_time
@@ -71,16 +72,13 @@ class CivilizationScheduler:
                 "Civilization's scheduled wake time has not arrived."
             )
 
-        # Legacy in-memory schedules may not contain the sleep metadata.
-        # Persistence migration populates these fields for old save files.
-        started_at = self.sleep_started_at.get(
-            civilization_id,
-            universe.current_time,
-        )
-        starting_year = self.sleep_start_local_year.get(
-            civilization_id,
-            civilization.year,
-        )
+        started_at = self.sleep_started_at.get(civilization_id)
+        starting_year = self.sleep_start_local_year.get(civilization_id)
+
+        if started_at is None or starting_year is None:
+            raise ValueError(
+                "Civilization's sleep metadata is incomplete."
+            )
 
         elapsed = max(0.0, universe.current_time - started_at)
         completed_years = floor(elapsed + 1e-9)
@@ -141,10 +139,18 @@ class CivilizationScheduler:
         universe: Universe,
         simulation_engine=None,
     ) -> SchedulerUpdate:
+        """Advance to the next scheduled event or civilization wake."""
+
         if self.get_next_civilization(universe) is not None:
             raise ValueError(
                 "Cannot advance automatically while a civilization is active."
             )
+
+        if simulation_engine is not None:
+            if simulation_engine.universe is not universe:
+                raise ValueError(
+                    "Simulation engine belongs to a different universe."
+                )
 
         arrivals = universe.process_arrivals()
         awakened = self.wake_due_civilizations(universe)
@@ -180,4 +186,8 @@ class CivilizationScheduler:
 
         awakened = self.wake_due_civilizations(universe)
 
-        return SchedulerUpdate(next_time, arrivals, awakened)
+        return SchedulerUpdate(
+            next_time,
+            arrivals,
+            awakened,
+        )
