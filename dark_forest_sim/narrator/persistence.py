@@ -4,11 +4,14 @@ import tempfile
 from pathlib import Path
 from typing import Any
 from math import isfinite
+from dataclasses import asdict
 
 from ..engine.civilization import (
     Civilization,
     CivilizationStatus,
-    CivilizationResources,
+    CivilizationState,
+    DemographicsState,
+    EnergyState,
 )
 from ..engine.event import Event, EventDelivery, DeliveryStatus
 from ..engine.scheduler import CivilizationScheduler
@@ -16,8 +19,8 @@ from ..engine.space import Position
 from ..engine.universe import Universe
 
 
-SCHEMA_VERSION = 2
-SUPPORTED_SCHEMA_VERSIONS = {1, 2}
+SCHEMA_VERSION = 3
+SUPPORTED_SCHEMA_VERSIONS = {1, 2, 3}
 
 
 class SimulationPersistence:
@@ -216,15 +219,7 @@ class SimulationPersistence:
                     },
                     "year": civ.year,
                     "status": civ.status.value,
-                    "resources": {
-                        "population": civ.resources.population,
-                        "annual_population_growth_rate":
-                            civ.resources.annual_population_growth_rate,
-                        "energy_production_watts": civ.resources.energy_production_watts,
-                        "energy_reserve_joules": civ.resources.energy_reserve_joules,
-                        "energy_consumption_watts_per_person":
-                            civ.resources.energy_consumption_watts_per_person,
-                    },
+                    "state": asdict(civ.state),
                 }
                 for civ in universe.civilizations.values()
             ],
@@ -287,7 +282,7 @@ class SimulationPersistence:
                 raise ValueError("Civilization records must be dictionaries.")
 
             position = Position(**item["position"])
-            resources = CivilizationResources(**item.get("resources", {}))
+            state = SimulationPersistence._deserialize_civilization_state(item)
 
             civilization = Civilization(
                 id=item["id"],
@@ -295,7 +290,7 @@ class SimulationPersistence:
                 position=position,
                 year=item["year"],
                 status=CivilizationStatus(item["status"]),
-                resources=resources,
+                state=state,
             )
 
             universe.add_civilization(civilization)
@@ -363,3 +358,59 @@ class SimulationPersistence:
             universe.deliveries[key] = delivery
 
         return universe
+
+    @staticmethod
+    def _deserialize_civilization_state(item: dict) -> CivilizationState:
+        """Load current state or migrate legacy resource data."""
+
+        state_data = item.get("state")
+
+        if state_data is None:
+            # Migrate schema v1/v2 resource representation.
+            resources = item.get("resources", {})
+
+            if not isinstance(resources, dict):
+                raise ValueError(
+                    "Legacy civilization resources must be a dictionary."
+                )
+
+            state_data = {
+                "demographics": {
+                    "population": resources.get("population", 0),
+                    "annual_population_growth_rate": resources.get(
+                        "annual_population_growth_rate",
+                        0.0,
+                    ),
+                },
+                "energy": {
+                    "energy_production_watts": resources.get(
+                        "energy_production_watts",
+                        0.0,
+                    ),
+                    "energy_reserve_joules": resources.get(
+                        "energy_reserve_joules",
+                        0.0,
+                    ),
+                    "energy_consumption_watts_per_person": resources.get(
+                        "energy_consumption_watts_per_person",
+                        0.0,
+                    ),
+                },
+            }
+
+        if not isinstance(state_data, dict):
+            raise ValueError("Civilization state must be a dictionary.")
+
+        demographics_data = state_data.get("demographics", {})
+        energy_data = state_data.get("energy", {})
+
+        if not isinstance(demographics_data, dict):
+            raise ValueError("Demographics state must be a dictionary.")
+
+        if not isinstance(energy_data, dict):
+            raise ValueError("Energy state must be a dictionary.")
+
+        return CivilizationState(
+            demographics=DemographicsState(**demographics_data),
+            energy=EnergyState(**energy_data),
+        )

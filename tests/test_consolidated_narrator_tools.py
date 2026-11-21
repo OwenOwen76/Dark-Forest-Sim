@@ -41,7 +41,7 @@ def test_operation_fields_are_selectable(toolbox):
         "manage_civilization": {
             "create",
             "modify",
-            "update_resources",
+            "update_state",
             "destroy",
         },
         "manage_event": {
@@ -110,8 +110,9 @@ def test_create_civilization(toolbox):
     assert universe.get_civilization("humanity").name == "Humanity"
 
 
-def test_update_civilization_resources(toolbox):
+def test_update_civilization_state(toolbox):
     tools, universe = toolbox
+
     universe.add_civilization(
         Civilization(
             id="humanity",
@@ -124,24 +125,146 @@ def test_update_civilization_resources(toolbox):
     result = tools.call(
         "manage_civilization",
         {
-            "operation": "update_resources",
+            "operation": "update_state",
             "civilization_id": "humanity",
-            "population": 8_000_000_000,
-            "annual_population_growth_rate": 0.01,
-            "energy_production_watts": 1e15,
-            "energy_reserve_joules": 1e25,
-            "energy_consumption_watts_per_person": 10_000,
+            "demographics": {
+                "population": 8_000_000_000,
+                "annual_population_growth_rate": 0.01,
+            },
+            "energy": {
+                "energy_production_watts": 1e15,
+                "energy_reserve_joules": 1e25,
+                "energy_consumption_watts_per_person": 10_000,
+            },
         },
     )
 
     assert result["ok"] is True
 
-    resources = universe.get_civilization("humanity").resources
-    assert resources.population == 8_000_000_000
-    assert resources.annual_population_growth_rate == 0.01
-    assert resources.energy_production_watts == 1e15
-    assert resources.energy_reserve_joules == 1e25
-    assert resources.energy_consumption_watts_per_person == 10_000
+    state = universe.get_civilization("humanity").state
+
+    assert state.demographics.population == 8_000_000_000
+    assert state.energy.energy_production_watts == 1e15
+
+
+def test_state_update_can_change_one_field(toolbox):
+    tools, universe = toolbox
+
+    universe.add_civilization(
+        Civilization(
+            id="humanity",
+            name="Humanity",
+            position=Position(0, 0, 0),
+            year=2026,
+        )
+    )
+
+    result = tools.call(
+        "manage_civilization",
+        {
+            "operation": "update_state",
+            "civilization_id": "humanity",
+            "demographics": {
+                "population": 200,
+            },
+        },
+    )
+
+    assert result["ok"] is True
+
+    state = universe.get_civilization("humanity").state
+    assert state.demographics.population == 200
+
+
+def test_physically_unusual_state_update_is_allowed(toolbox):
+    tools, universe = toolbox
+
+    universe.add_civilization(
+        Civilization(
+            id="humanity",
+            name="Humanity",
+            position=Position(0, 0, 0),
+            year=2026,
+        )
+    )
+
+    result = tools.call(
+        "manage_civilization",
+        {
+            "operation": "update_state",
+            "civilization_id": "humanity",
+            "demographics": {
+                "population": -100,
+            },
+            "energy": {
+                "energy_production_watts": -500,
+            },
+        },
+    )
+
+    assert result["ok"] is True
+
+    state = universe.get_civilization("humanity").state
+
+    assert state.demographics.population == -100
+    assert state.energy.energy_production_watts == -500
+
+
+def test_invalid_state_update_does_not_partially_mutate(toolbox):
+    tools, universe = toolbox
+
+    universe.add_civilization(
+        Civilization(
+            id="humanity",
+            name="Humanity",
+            position=Position(0, 0, 0),
+            year=2026,
+        )
+    )
+
+    result = tools.call(
+        "manage_civilization",
+        {
+            "operation": "update_state",
+            "civilization_id": "humanity",
+            "demographics": {
+                "population": 200,
+            },
+            "energy": {
+                "unknown_field": 10,
+            },
+        },
+    )
+
+    assert result["ok"] is False
+
+    state = universe.get_civilization("humanity").state
+
+    assert state.demographics.population == 0
+    assert state.energy.energy_production_watts == 0
+
+
+def test_empty_state_update_is_rejected(toolbox):
+    tools, universe = toolbox
+
+    universe.add_civilization(
+        Civilization(
+            id="humanity",
+            name="Humanity",
+            position=Position(0, 0, 0),
+            year=2026,
+        )
+    )
+
+    result = tools.call(
+        "manage_civilization",
+        {
+            "operation": "update_state",
+            "civilization_id": "humanity",
+        },
+    )
+
+    assert result["ok"] is False
 
 
 def test_resource_update_can_change_one_field(toolbox):
@@ -257,7 +380,6 @@ def test_query_civilization_includes_resources(toolbox):
             name="Humanity",
             position=Position(0, 0, 0),
             year=2026,
-            resources=CivilizationResources(population=100),
         )
     )
 
@@ -270,7 +392,7 @@ def test_query_civilization_includes_resources(toolbox):
     )
 
     assert result["ok"] is True
-    assert result["result"]["resources"]["population"] == 100
+    assert result["result"]["state"]["demographics"]["population"] == 0
 
 
 def test_calculate_dispatches_to_distance(toolbox):

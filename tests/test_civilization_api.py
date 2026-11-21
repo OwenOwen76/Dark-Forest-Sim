@@ -94,8 +94,8 @@ async def test_civilization_context_includes_resources(tmp_path):
 
     assert context["civilization_id"] == "civ-001"
     assert context["year"] == 100
-    assert "resources" in context
-    assert context["resources"]["population"] == 0
+    assert "state" in context
+    assert context["state"]["demographics"]["population"] == 0
 
 
 def test_knowledge_endpoint_requires_active_civilization(tmp_path):

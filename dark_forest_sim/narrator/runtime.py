@@ -267,7 +267,7 @@ class NarratorRuntime:
             },
             "year": civilization.year,
             "status": civilization.status.value,
-            "resources": asdict(civilization.resources),
+            "state": asdict(civilization.state),
         }
 
     def civilization_knowledge(self):

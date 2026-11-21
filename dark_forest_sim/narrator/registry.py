@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from ..engine.civilization import CivilizationResources
 from ..engine.scheduler import CivilizationScheduler
 from ..engine.universe import Universe
 from . import data, economics, physics, technology, world
@@ -110,12 +109,23 @@ class NarratorToolbox:
             "z": number,
         }
 
-        resource_fields = {
-            "population": integer,
-            "annual_population_growth_rate": number,
-            "energy_production_watts": number,
-            "energy_reserve_joules": number,
-            "energy_consumption_watts_per_person": number,
+        demographics_fields = {
+            "type": "object",
+            "properties": {
+                "population": integer,
+                "annual_population_growth_rate": number,
+            },
+            "additionalProperties": False,
+        }
+
+        energy_fields = {
+            "type": "object",
+            "properties": {
+                "energy_production_watts": number,
+                "energy_reserve_joules": number,
+                "energy_consumption_watts_per_person": number,
+            },
+            "additionalProperties": False,
         }
 
         # ------------------------------------------------------------
@@ -156,14 +166,15 @@ class NarratorToolbox:
                     lambda **kw: world.modify_civilization(u, **kw),
                     ("civilization_id",),
                 ),
-                "update_resources": self._operation(
-                    "Update one or more persistent civilization resource fields.",
+                "update_state": self._operation(
+                    "Update one or more civilization state domains.",
                     {
                         "civilization_id": string,
-                        **resource_fields,
+                        "demographics": demographics_fields,
+                        "energy": energy_fields,
                     },
                     lambda civilization_id, **changes: (
-                        world.update_civilization_resources(
+                        world.update_civilization_state(
                             u,
                             civilization_id,
                             **changes,

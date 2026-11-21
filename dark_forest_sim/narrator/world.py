@@ -2,8 +2,10 @@ from dataclasses import asdict, replace
 
 from ..engine.civilization import (
     Civilization,
-    CivilizationResources,
+    CivilizationState,
     CivilizationStatus,
+    DemographicsState,
+    EnergyState,
 )
 from ..engine.event import Event
 from ..engine.scheduler import CivilizationScheduler
@@ -262,31 +264,68 @@ def advance_when_idle(
         ],
     }
 
-def update_civilization_resources(
+def update_civilization_state(
     universe: Universe,
     civilization_id: str,
-    **changes,
+    demographics: dict | None = None,
+    energy: dict | None = None,
 ) -> dict:
-    """Atomically update one or more civilization resource fields."""
+    """Atomically update one or more civilization state domains."""
 
     civilization = universe.get_civilization(civilization_id)
 
-    if not changes:
-        raise ValueError("At least one resource field must be provided.")
+    if demographics is None and energy is None:
+        raise ValueError("At least one domain update must be provided.")
 
-    allowed_fields = set(CivilizationResources.__dataclass_fields__)
-    unexpected = set(changes) - allowed_fields
+    if demographics is not None:
+        if not isinstance(demographics, dict) or not demographics:
+            raise ValueError(
+                "demographics must be a non-empty dictionary."
+            )
 
-    if unexpected:
-        raise ValueError(
-            f"Unknown resource fields: {sorted(unexpected)}"
-        )
+        allowed = set(DemographicsState.__dataclass_fields__)
+        unexpected = set(demographics) - allowed
 
-    # Construct and validate the replacement before mutating the civilization.
-    updated_resources = replace(civilization.resources, **changes)
-    civilization.resources = updated_resources
+        if unexpected:
+            raise ValueError(
+                f"Unknown demographic fields: {sorted(unexpected)}"
+            )
+
+    if energy is not None:
+        if not isinstance(energy, dict) or not energy:
+            raise ValueError(
+                "energy must be a non-empty dictionary."
+            )
+
+        allowed = set(EnergyState.__dataclass_fields__)
+        unexpected = set(energy) - allowed
+
+        if unexpected:
+            raise ValueError(
+                f"Unknown energy fields: {sorted(unexpected)}"
+            )
+
+    # Construct all replacements before mutating the civilization.
+    updated_demographics = (
+        replace(civilization.state.demographics, **demographics)
+        if demographics is not None
+        else civilization.state.demographics
+    )
+
+    updated_energy = (
+        replace(civilization.state.energy, **energy)
+        if energy is not None
+        else civilization.state.energy
+    )
+
+    updated_state = CivilizationState(
+        demographics=updated_demographics,
+        energy=updated_energy,
+    )
+
+    civilization.state = updated_state
 
     return {
         "civilization_id": civilization.id,
-        "resources": asdict(updated_resources),
+        "state": asdict(updated_state),
     }
