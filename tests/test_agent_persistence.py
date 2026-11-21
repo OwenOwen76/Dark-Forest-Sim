@@ -1,6 +1,9 @@
 import json
 
-from dark_forest_sim.engine.civilization import Civilization
+from dark_forest_sim.engine.civilization import (
+    Civilization,
+    CivilizationStatus,
+)
 from dark_forest_sim.engine.scheduler import CivilizationScheduler
 from dark_forest_sim.engine.space import Position
 from dark_forest_sim.engine.universe import Universe
@@ -22,11 +25,14 @@ def make_world():
             name="Test Civilization",
             position=Position(1, 2, 3),
             year=100,
+            status=CivilizationStatus.SLEEPING,
         )
     )
 
     scheduler = CivilizationScheduler()
     scheduler.wake_times["civ-001"] = 200.0
+    scheduler.sleep_started_at["civ-001"] = 100.0
+    scheduler.sleep_start_local_year["civ-001"] = 100
 
     return universe, scheduler
 
@@ -120,6 +126,8 @@ def test_save_preserves_universe_and_scheduler(tmp_path):
         "Test Civilization"
     )
     assert loaded["scheduler"].wake_times == {"civ-001": 200.0}
+    assert loaded["scheduler"].sleep_started_at == {"civ-001": 100.0}
+    assert loaded["scheduler"].sleep_start_local_year == {"civ-001": 100}
     assert loaded["simulation"]["status"] == "running"
 
 
@@ -133,4 +141,4 @@ def test_empty_agent_data_is_saved(tmp_path):
 
     assert loaded["agent_states"] == {}
     assert loaded["tool_call_journal"] == {}
-    assert loaded["loaded_schema_version"] == 3
+    assert loaded["loaded_schema_version"] == 4

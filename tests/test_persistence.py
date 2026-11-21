@@ -64,6 +64,8 @@ def create_world():
 
     scheduler = CivilizationScheduler()
     scheduler.wake_times["beta"] = 200.0
+    scheduler.sleep_started_at["beta"] = 12.0
+    scheduler.sleep_start_local_year["beta"] = 200
 
     return universe, scheduler
 
@@ -97,6 +99,8 @@ def test_universe_round_trip(tmp_path):
     assert restored_delivery.status == DeliveryStatus.PENDING
 
     assert restored_scheduler.wake_times == {"beta": 200.0}
+    assert restored_scheduler.sleep_started_at == {"beta": 12.0}
+    assert restored_scheduler.sleep_start_local_year == {"beta": 200}
 
 
 def test_missing_save_returns_none(tmp_path):

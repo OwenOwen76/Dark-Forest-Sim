@@ -119,7 +119,7 @@ def test_schema_v1_save_remains_loadable(tmp_path):
     assert loaded["tool_call_journal"] == {}
 
 
-def test_new_saves_use_schema_v3(tmp_path):
+def test_new_saves_use_schema_v4(tmp_path):
     path = tmp_path / "simulation.json"
     persistence = SimulationPersistence(path)
 
@@ -131,9 +131,10 @@ def test_new_saves_use_schema_v3(tmp_path):
 
     data = json.loads(path.read_text(encoding="utf-8"))
 
-    assert data["schema_version"] == 3
+    assert data["schema_version"] == 4
     assert data["agent_states"] == {}
     assert data["tool_call_journal"] == {}
+    assert data["simulation_engine"] == {}
 
 
 def test_unsupported_schema_version_is_rejected(tmp_path):
