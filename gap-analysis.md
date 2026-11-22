@@ -4,168 +4,246 @@
 **Repository:** `OwenOwen76/Dark-Forest-Sim`  
 **Reviewed:** November 21, 2026
 
-This document tracks outstanding implementation work against the architecture specification. Existing foundations are identified as partial rather than repeatedly listed as missing.
+This document tracks implementation progress against the current architecture. It distinguishes existing foundations from incomplete functionality.
 
-## 1. Shared Simulation Foundations
+## 1. Civilization Representation — Partial
 
-| Area | Current state | Remaining work | Architecture |
-|---|---|---|---|
-| Stocks and flows | Basic stock settlement exists | Extend accounting across physical resources, materials, food, and other domains | §4.1 |
-| Capacity and constraints | Energy supply is constrained by available reserves | Generalize capacity, utilization, bottlenecks, availability, and unmet demand | §4.2 |
-| Networks | No general network model | Reusable graph foundation for infrastructure, transport, energy, communications, and trade | §4.3 |
-| Projects and processes | No general project system | Prerequisites, resources, capabilities, progress, duration, dependencies, and failure | §4.4 |
-| Knowledge and uncertainty | Basic event-delivery boundaries exist | Observations, estimates, beliefs, confidence, staleness, and information provenance | §4.5, §8 |
-| Stochastic engine | Current simulation is largely deterministic | Independent reproducible random streams and persisted generator states | §4.6, §7 |
-| Temporal engine | Annual demographic and interval-based energy updates exist | Event scheduling, domain-specific update frequencies, intermediate events, and adaptive advancement | §6 |
-| Spatial model | Basic 3D positions and distance calculations exist | Spatial hierarchy, astronomical distributions, physical objects, and spatial generation | §5 |
+**Existing:**
+- Authoritative civilization objects and state.
+- Demographics and aggregate energy state.
+- Three-dimensional positions.
+- Civilization-local integer years.
+- Basic state validation and serialization.
 
-## 2. Domain Simulation
+**Remaining:**
+- Expand civilization state as additional domains are implemented.
+- Establish consistent units and accounting boundaries.
+- Keep internal detail separate from civilization-facing summaries.
+- Support operator-specified unusual values without silently correcting them.
 
-Only demographics and an initial aggregate energy model currently have authoritative simulation state. Calculators and narrator tools should not be mistaken for completed simulation domains.
+Architecture: §2–3, §15 Stage 1.
 
-| Domain | Remaining implementation |
+## 2. Runtime and Scheduling — Partial
+
+**Existing:**
+- Civilization activation and manual turn completion.
+- LLM request handling and conversation persistence.
+- Agent lifecycle states.
+- Scheduler selection and civilization sleep/wake.
+- Tool-call journaling.
+- Basic interruption and recovery handling.
+- Runtime identity checks.
+
+**Remaining:**
+- Implement autonomous civilization selection and scheduling.
+- Complete the LLM → tool call → tool result → LLM cycle.
+- Automatically continue a turn until the civilization ends it.
+- Integrate scheduler handoffs and idle time advancement.
+- Implement distinct pause, suspend, and terminate operations.
+- Preserve unfinished work at safe interruption boundaries.
+- Ensure stale requests and tool calls cannot cross civilization boundaries.
+
+Architecture: §9, §15 Stage 2.
+
+## 3. Civilization Tools — Partial
+
+**Existing:**
+- Separate civilization MCP server.
+- Self-inspection and delivered-event inspection.
+- Mathematical and physical calculation tools.
+- Action proposal and time-lapse tools.
+- Narrator toolbox with world-management operations and calculations.
+
+**Remaining:**
+- Organize civilization tools into inspection, calculation, knowledge acquisition, action proposals, execution, and time advancement.
+- Expand inspection to cover implemented simulation domains.
+- Implement genuine knowledge acquisition and discovery.
+- Replace free-form action descriptions with structured proposals.
+- Validate action prerequisites, permissions, resources, and capabilities.
+- Provide clear rejection, delay, and partial-completion explanations.
+- Ensure narrator permissions never transfer to civilization agents.
+
+Architecture: §8, §12, §15 Stage 3.
+
+## 4. Shared Simulation Mechanics — Mostly Missing
+
+| Mechanism | Current state | Remaining work |
+|---|---|---|
+| Stocks and flows | Basic demographic and energy accounting | General reusable accounting and conservation |
+| Capacity and constraints | Initial energy constraints | General capacity, utilization, bottlenecks, and unmet demand |
+| Networks | Basic spatial distance calculations | Reusable graph and network mechanisms |
+| Projects and processes | No general system | Prerequisites, resources, progress, dependencies, and failure |
+| Uncertainty | Basic event-delivery boundaries | Observations, estimates, confidence, provenance, and staleness |
+| Stochastic processes | Mostly deterministic | Independent reproducible random streams and persisted states |
+| Event scheduling | Basic events and scheduled wakes | General event scheduling and domain update integration |
+
+These mechanisms should be implemented once and reused across domains.
+
+Architecture: §4–5, §15 Stage 4.
+
+## 5. Domain Simulation — Early Foundation
+
+Only demographics and an initial aggregate energy model currently have authoritative simulation state.
+
+| Domain | Remaining work |
 |---|---|
-| Demographics | Cohorts, fertility, mortality, migration, and stochastic population changes |
-| Biology and health | Species profiles, disease, nutrition, and medical systems |
+| Demographics | Cohorts, fertility, mortality, migration, stochastic population changes |
+| Biology and health | Species biology, nutrition, disease, and medicine |
 | Food and agriculture | Crops, soil, water, yields, and food storage |
-| Energy | Generation facilities, storage, transmission, dispatch, and losses |
-| Materials and resources | Deposits, reserves, extraction, processing, inventories, and recycling |
-| Industry and manufacturing | Production chains, machinery, labor, capacity, and constraints |
+| Energy | Facilities, storage, transmission, dispatch, and losses |
+| Materials and resources | Deposits, extraction, processing, inventories, and recycling |
+| Industry and manufacturing | Production chains, machinery, labor, and constraints |
 | Infrastructure | Networks, maintenance, degradation, failures, and repairs |
-| Technology and science | Research projects, prerequisites, prototypes, testing, and deployment |
-| Astronomy and planetary systems | Stellar and planetary properties, orbital mechanics, environments, and universe generation |
-| Thermodynamics | Integrated energy and heat balances, radiation, cooling, and observability |
-| Ecology and environment | Ecosystems, environmental stocks, regeneration, and pollution |
+| Technology and science | Research, prerequisites, prototypes, testing, and deployment |
+| Astronomy and planetary systems | Stars, planets, orbital mechanics, environments, and generation |
+| Thermodynamics | Energy and heat balances, cooling, radiation, and observability |
+| Ecology and environment | Ecosystems, resources, regeneration, and pollution |
 | Economy and trade | Physical allocation, markets, trade, and financial systems |
-| Logistics and transportation | Transport networks, vehicles, propulsion, and delivery |
-| Governance and institutions | Authority, institutions, policies, administration, and enforcement |
-| Society and culture | Social groups, norms, education, cooperation, and cultural development |
-| Military and security | Capabilities, readiness, intelligence, logistics, and defense |
-| Information and communication | Detection, transmission, decoding, interpretation, and knowledge processing |
-| Exploration and expansion | Missions, surveys, discoveries, settlements, and construction |
-| Risk and resilience | Reliability, dependencies, correlated failures, redundancy, and recovery |
+| Logistics and transportation | Vehicles, routes, propulsion, capacity, and delivery |
+| Governance and institutions | Authority, administration, policies, and enforcement |
+| Society and culture | Social groups, beliefs, education, and cultural development |
+| Military and security | Capabilities, readiness, intelligence, and logistics |
+| Information and communication | Transmission, detection, decoding, interpretation, and knowledge |
+| Exploration and expansion | Surveys, missions, discoveries, and settlements |
+| Risk and resilience | Reliability, redundancy, correlated failures, and recovery |
 
-**Important:** Domains should be developed through shared mechanisms and connected where dependencies are strong. Energy, materials, industry, and infrastructure should form an early connected production system.
+**Implementation principle:** Develop strongly connected domains together rather than completing each independently. Energy, materials, industry, and infrastructure should form an early integrated production system.
 
-Architecture: §9–10.
+Architecture: §6–7, §15 Stage 5.
 
-## 3. Runtime and Civilization Integration
+## 6. Persistence and Recovery — Partial
 
-Existing agent state, LLM request handling, tool-call journaling, and recovery provide a foundation.
+**Existing:**
+- Versioned JSON persistence.
+- Atomic save replacement.
+- Civilization and universe state.
+- Events and deliveries.
+- Scheduler metadata.
+- Simulation-engine timing state.
+- Agent conversations and state.
+- Tool-call journal.
+- Basic interrupted-operation recovery.
 
-Remaining work:
+**Remaining:**
+- Persist future domain and project state.
+- Persist universe-generation configuration and stochastic generator states when introduced.
+- Preserve all event and domain scheduling information.
+- Complete recovery of interrupted LLM and tool operations.
+- Verify deterministic continuation where supported.
+- Demonstrate save → destroy process → fresh-process load → resume.
 
-- Complete the LLM tool-call execution and response cycle.
-- Integrate civilization selection, activation, turns, and scheduler handoffs.
-- Implement distinct pause, suspend, and terminate behavior.
-- Preserve unfinished work across interruptions.
-- Bind every tool execution to its originating civilization and runtime identity.
-- Prevent stale requests and duplicate uncertain side effects.
-- Complete civilization MCP integration with the evolving domain tools.
+Architecture: §10, §15 Stage 6.
 
-Architecture: §11–12.
+## 7. Knowledge and Information Boundaries — Partial
 
-## 4. Persistence and Continuation
+**Existing:**
+- Physical event delivery.
+- Civilizations can inspect delivered events.
+- Narrator and civilization tools are separated.
 
-Existing versioned persistence covers substantial world, scheduler, agent, journal, and simulation-engine state.
+**Remaining:**
+- Establish a complete distinction between world truth and subjective knowledge.
+- Track observations, estimates, inferences, confidence, provenance, and staleness.
+- Separate detection, reception, decoding, interpretation, and understanding.
+- Prevent undiscovered objects and private foreign state from leaking into contexts.
+- Keep narrator-only information and action history narrator-facing unless independently observed.
+- Build compact, decision-oriented civilization summaries.
+- Provide detailed inspection tools.
+- Separate hypothetical forecasts from authoritative state.
 
-Remaining work:
+Architecture: §3, §8, §11–12.
 
-- Persist all future domain state and project progress.
-- Persist independent random generator states and configurations.
-- Ensure event scheduling and domain clocks survive recovery.
-- Complete interrupted LLM and tool-call recovery.
-- Demonstrate full save → process shutdown → fresh-process load → continuation.
+## 8. GUI and Observability — Partial
 
-Architecture: §13.
+**Existing:**
+- Initial simulation, narrator, and civilization interfaces.
+- Initial inference and execution event stream.
 
-## 5. Information and Civilization-Facing Context
-
-Basic delivered-event filtering exists, but the full knowledge architecture is missing.
-
-Remaining work:
-
-- Separate authoritative truth from civilization beliefs and knowledge.
-- Represent exact, observed, estimated, inferred, suspected, and unknown information.
-- Track observation source, time, confidence, uncertainty, and staleness.
-- Prevent hidden universe state and narrator-only information from leaking into civilization contexts.
-- Build compact decision-oriented civilization summaries.
-- Provide drill-down inspection tools.
-- Keep forecasts and hypothetical calculations separate from authoritative state.
-
-Architecture: §3, §8, §14–15.
-
-## 6. GUI and Observability
-
-The existing interface has simulation, narrator, and civilization views, along with an initial inference event stream.
-
-Remaining work:
-
+**Remaining:**
 - Complete the main control room and simulation controls.
-- Add a 2D projection of the 3D universe.
+- Add the 2D projection of the 3D universe.
 - Add contextual object inspection and modification.
-- Complete the narrator interface and its two tool categories.
+- Complete the narrator interface.
 - Build the calculator page.
-- Build the device and runtime usage monitor.
+- Build the device usage monitor.
 - Build the graphical file viewer.
-- Implement the separate human-readable live log and structured JSON logging.
-- Integrate runtime events, tool results, errors, action proposals, handoffs, suspension, and resume into the live execution stream.
+- Separate human-readable live logs from structured JSON logs.
+- Display complete LLM execution, tool results, errors, proposals, and runtime transitions.
 
-Architecture: §15–16 and §18, Stage 7.
+Architecture: §13, §15 Stage 7.
 
-## 7. Scientific Fidelity and Model Documentation
+## 9. Scientific Fidelity and Documentation — Incomplete
 
-Every major simulation model still needs documented assumptions and limitations.
+Every major model must document:
+- Governing equations or mechanisms.
+- Assumptions and limitations.
+- Inputs, outputs, and units.
+- Update frequency.
+- Stochastic behavior.
+- Unsupported conditions.
 
-Outstanding work:
+Avoid false precision, arbitrary aggregate scores, and silent correction of unusual operator-specified values.
 
-- Define model resolution, units, update frequency, and governing mechanisms.
-- Document assumptions and unsupported conditions.
-- Avoid false precision and arbitrary aggregate scores.
-- Preserve unusual operator-specified values without silently correcting them.
-- Ensure calculations explicitly report when their assumptions are violated.
+Architecture: §14.
 
-Architecture: §17 and §21.
+## 10. Final Validation — Deferred
 
-## 8. Outstanding Design Decisions
+After implementation, create a new organized test suite covering:
 
-These are architectural decisions, not implementation defects:
+- Shared mechanics and physical calculations.
+- Individual domain behavior.
+- Cross-domain causal interactions.
+- Information boundaries.
+- Runtime scheduling and recovery.
+- Fresh-process persistence.
+- Conservation and physical constraints.
+- Long-duration simulation and performance.
+
+The existing test suite will not be continuously maintained during implementation. Testing will be consolidated after the implementation work is complete.
+
+Architecture: §16, §15 Stage 8.
+
+## 11. Outstanding Design Decisions
+
+Resolve these when the relevant implementation approaches:
 
 - Universe scale and generation parameters.
 - Initial civilization complexity.
-- Simulation performance budget.
+- Performance budget.
 - Species-independent biological abstraction.
 - General economic and social abstraction.
 
-These should be resolved when the relevant implementation work approaches, rather than prematurely over-engineered.
+Avoid prematurely building unnecessarily universal systems.
 
-Architecture: §20.
+Architecture: §17.
 
-## 9. Recommended Implementation Priorities
+## 12. Implementation Priorities
 
-1. Complete the shared simulation foundations: capacity, constraints, projects, networks, knowledge, and stochastic processes.
-2. Develop materials and resource accounting.
-3. Connect energy, materials, industry, and infrastructure into a functioning production system.
-4. Expand demographics and the physical environment.
-5. Develop the remaining civilization domains through shared foundations.
-6. Complete civilization knowledge boundaries and decision-oriented context.
-7. Finish runtime orchestration, tool execution, and recovery.
-8. Complete persistence and fresh-process continuation.
-9. Complete the GUI and observability systems.
-10. Conduct the dedicated comprehensive testing and scientific consistency review.
+Follow the architecture's roadmap:
 
-## 10. Completion Standard
+1. Complete civilization representation.
+2. Complete runtime and scheduling.
+3. Complete civilization tools.
+4. Implement shared simulation mechanics.
+5. Implement interconnected domain simulation.
+6. Complete persistence and fresh-process continuation.
+7. Complete the GUI and observability.
+8. Conduct comprehensive validation.
+9. Run the first extended simulation.
 
-A feature or domain is not complete merely because it has state fields, calculators, or tools.
+Within domain implementation, prioritize connected physical and production systems rather than isolated features.
+
+## 13. Completion Standard
+
+A feature is not complete merely because it has state fields, calculations, or tools.
 
 It must:
-
 - Maintain authoritative state.
 - Advance correctly over simulation time.
-- Enforce applicable physical and operational constraints.
-- Interact with relevant domains.
+- Enforce relevant physical and operational constraints.
+- Interact causally with other systems.
 - Respect civilization information boundaries.
-- Preserve state through saving and loading.
-- Expose appropriate decision-relevant information.
+- Survive persistence and recovery.
+- Expose useful information for civilization decisions.
 
-Detailed internal simulation should support meaningful decisions without overwhelming civilization-facing summaries.
+The goal is a coherent, functioning simulation—not 19 disconnected collections of statistics.
