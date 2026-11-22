@@ -14,6 +14,10 @@ class ToolCallRequest(BaseModel):
     tool: str
     arguments: dict[str, Any] = Field(default_factory=dict)
 
+class ToolCallResolutionRequest(BaseModel):
+    outcome: str
+    result: Any = None
+    error: str | None = None
 
 def get_runtime(request: Request) -> NarratorRuntime:
     runtime = getattr(request.app.state, "narrator_runtime", None)
@@ -59,16 +63,6 @@ civilization_router = APIRouter(
     prefix="/api/civilization",
     tags=["civilization"],
 )
-
-
-@civilization_router.post("/resume")
-async def resume_runtime(request: Request):
-    runtime = get_runtime(request)
-
-    try:
-        return await runtime.resume_interrupted()
-    except (ValueError, KeyError, TypeError) as exc:
-        raise HTTPException(status_code=409, detail=str(exc))
 
 class ActivateRequest(BaseModel):
     civilization_id: str
@@ -167,5 +161,35 @@ async def get_civilization_knowledge(request: Request):
         return {
             "known_events": runtime.civilization_knowledge(),
         }
+    except (ValueError, KeyError, TypeError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+
+@civilization_router.post("/tool-calls/{call_id}/resolve")
+async def resolve_uncertain_tool_call(
+    call_id: str,
+    body: ToolCallResolutionRequest,
+    request: Request,
+):
+    runtime = get_runtime(request)
+
+    try:
+        record = runtime.resolve_uncertain_tool_call(
+            call_id,
+            body.outcome,
+            body.result,
+            body.error,
+        )
+        return record.to_dict()
+
+    except (ValueError, KeyError, TypeError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+
+
+@civilization_router.post("/resume")
+async def resume_runtime(request: Request):
+    runtime = get_runtime(request)
+
+    try:
+        return await runtime.resume_interrupted()
     except (ValueError, KeyError, TypeError) as exc:
         raise HTTPException(status_code=409, detail=str(exc))

@@ -53,6 +53,9 @@ class NarratorRuntime:
 
     last_action_result: dict | None = None
 
+    active_request_id: str | None = None
+    active_request_civilization_id: str | None = None
+
     _action_future: asyncio.Future | None = field(
         default=None, init=False, repr=False
     )
@@ -77,6 +80,14 @@ class NarratorRuntime:
             )
             self.pending_action = simulation.get("pending_action")
             self.status = simulation.get("status", "stopped")
+
+            self.active_request_id = simulation.get(
+                "active_request_id"
+            )
+            self.active_request_civilization_id = simulation.get(
+                "active_request_civilization_id"
+            )
+
             self.civilization_histories = simulation.get(
                 "civilization_histories", {}
             )
@@ -114,8 +125,7 @@ class NarratorRuntime:
                     ),
                 )
 
-        # The engine must be initialized before recovery saves occur.
-        # This ensures every subsequent save preserves its fractional clocks.
+        # Initialize the engine before recovery saves occur.
         self.simulation_engine = SimulationEngine(
             self.universe,
             simulation_engine_state,
@@ -132,9 +142,24 @@ class NarratorRuntime:
                     record.updated_at = _timestamp()
                     recovery_required = True
 
-            # A process cannot resume an asyncio task from a previous
-            # process. Preserve its state but mark it interrupted.
-            if self.status == "running":
+                    agent = self.agent_states.get(
+                        record.civilization_id
+                    )
+
+                    if agent is not None:
+                        if record.call_id in agent.pending_tool_call_ids:
+                            agent.pending_tool_call_ids.remove(
+                                record.call_id
+                            )
+
+                        agent.status = AgentStatus.INTERRUPTED
+                        agent.updated_at = _timestamp()
+
+            # An asyncio request cannot survive its originating process.
+            if (
+                self.status == "running"
+                or self.active_request_id is not None
+            ):
                 self.status = "interrupted"
 
                 if self.active_civilization_id in self.agent_states:
@@ -143,6 +168,9 @@ class NarratorRuntime:
                     ]
                     agent.status = AgentStatus.INTERRUPTED
                     agent.updated_at = _timestamp()
+
+                self.active_request_id = None
+                self.active_request_civilization_id = None
 
                 recovery_required = True
 
@@ -188,6 +216,10 @@ class NarratorRuntime:
                         else AgentStatus.INTERRUPTED
                     )
                     agent.updated_at = _timestamp()
+
+                # Invalidate any outstanding LLM response.
+                self.active_request_id = None
+                self.active_request_civilization_id = None
 
                 self.active_civilization_id = None
                 self.status = "stopped"
@@ -236,6 +268,9 @@ class NarratorRuntime:
                 "civilization_histories":
                     self.civilization_histories,
                 "last_action_result": self.last_action_result,
+                "active_request_id": self.active_request_id,
+                "active_request_civilization_id":
+                    self.active_request_civilization_id,
             },
             agent_states=self.agent_states,
             tool_call_journal=self.tool_call_journal,
@@ -257,6 +292,12 @@ class NarratorRuntime:
 
     async def activate_civilization(self, civilization_id: str):
         async with self._lock:
+            if self.status == "interrupted":
+                raise ValueError(
+                    "Resume the interrupted runtime before activating "
+                    "another civilization."
+                )
+
             if self.active_civilization_id is not None:
                 raise ValueError("Another civilization is already active.")
 
@@ -264,6 +305,22 @@ class NarratorRuntime:
 
             if civilization.status != CivilizationStatus.ACTIVE:
                 raise ValueError("Only awake civilizations can be activated.")
+
+            uncertain_calls = [
+                record.call_id
+                for record in self.tool_call_journal.values()
+                if (
+                    record.civilization_id == civilization_id
+                    and record.status == ToolCallStatus.UNCERTAIN
+                )
+            ]
+
+            if uncertain_calls:
+                raise ValueError(
+                    "Resolve uncertain tool calls before activating "
+                    "this civilization: "
+                    + ", ".join(uncertain_calls)
+                )
 
             agent = self.agent_states.setdefault(
                 civilization_id,
@@ -374,13 +431,24 @@ class NarratorRuntime:
     ) -> ToolCallRecord:
         """Durably register a tool call before execution."""
 
+        if self.status != "running":
+            raise ValueError("Runtime is not running.")
+
+        if civilization_id != self.active_civilization_id:
+            raise ValueError(
+                "Tool call does not belong to the active civilization."
+            )
+
         if call_id in self.tool_call_journal:
             raise ValueError(f"Tool call already exists: {call_id}")
 
-        if not tool_name.strip():
+        if not isinstance(tool_name, str) or not tool_name.strip():
             raise ValueError("Tool name cannot be empty.")
 
-        self.universe.get_civilization(civilization_id)
+        if not isinstance(arguments, dict):
+            raise ValueError("Tool arguments must be a dictionary.")
+
+        self.get_active_civilization()
 
         agent = self.agent_states.setdefault(
             civilization_id,
@@ -410,9 +478,20 @@ class NarratorRuntime:
         self,
         call_id: str,
     ) -> ToolCallRecord:
-        """Record execution intent before invoking the external tool."""
+        """Persist execution intent before invoking the external tool."""
 
         record = self._get_tool_call(call_id)
+
+        if self.status != "running":
+            raise ValueError("Runtime is not running.")
+
+        if record.civilization_id != self.active_civilization_id:
+            raise ValueError(
+                "Cannot execute a tool call belonging to an inactive "
+                "civilization."
+            )
+
+        self.get_active_civilization()
 
         if record.status != ToolCallStatus.PENDING:
             raise ValueError(
@@ -471,6 +550,53 @@ class NarratorRuntime:
         self.save()
         return record
 
+    def resolve_uncertain_tool_call(
+        self,
+        call_id: str,
+        outcome: str,
+        result=None,
+        error: str | None = None,
+    ) -> ToolCallRecord:
+        """Resolve an uncertain call after external verification."""
+
+        record = self._get_tool_call(call_id)
+
+        if record.status != ToolCallStatus.UNCERTAIN:
+            raise ValueError(
+                "Only uncertain tool calls can be manually resolved."
+            )
+
+        if outcome == "completed":
+            if error is not None:
+                raise ValueError(
+                    "A completed call cannot have an error."
+                )
+
+            record.status = ToolCallStatus.COMPLETED
+            record.result = deepcopy(result)
+            record.error = None
+
+        elif outcome == "failed":
+            if not isinstance(error, str) or not error.strip():
+                raise ValueError(
+                    "A failed call requires an explanation."
+                )
+
+            record.status = ToolCallStatus.FAILED
+            record.error = error
+            record.result = None
+
+        else:
+            raise ValueError(
+                "Outcome must be 'completed' or 'failed'."
+            )
+
+        record.updated_at = _timestamp()
+        self._finish_tool_call(record)
+        self.save()
+
+        return record
+
     def _get_tool_call(self, call_id: str) -> ToolCallRecord:
         try:
             return self.tool_call_journal[call_id]
@@ -490,11 +616,42 @@ class NarratorRuntime:
         agent.updated_at = _timestamp()
 
     async def run_agent_turn(self, client):
-        """Run one LLM response for the currently active civilization."""
+        """Run one LLM response with protection against stale responses."""
 
         async with self._lock:
+            if self.status != "running":
+                raise ValueError("Runtime is not running.")
+
             civilization = self.get_active_civilization()
-            agent = self.agent_states[civilization.id]
+            civilization_id = civilization.id
+
+            agent = self.agent_states.setdefault(
+                civilization_id,
+                AgentState(civilization_id=civilization_id),
+            )
+
+            if agent.pending_tool_call_ids:
+                raise ValueError(
+                    "Cannot continue while tool calls are pending."
+                )
+
+            uncertain_calls = [
+                record.call_id
+                for record in self.tool_call_journal.values()
+                if (
+                    record.civilization_id == civilization_id
+                    and record.status == ToolCallStatus.UNCERTAIN
+                )
+            ]
+
+            if uncertain_calls:
+                raise ValueError(
+                    "Resolve uncertain tool calls before continuing: "
+                    + ", ".join(uncertain_calls)
+                )
+
+            if self.active_request_id is not None:
+                raise ValueError("An LLM request is already active.")
 
             messages = []
 
@@ -506,46 +663,95 @@ class NarratorRuntime:
 
             messages.extend(deepcopy(agent.messages))
 
+            request_id = str(uuid4())
+
+            self.active_request_id = request_id
+            self.active_request_civilization_id = civilization_id
+
             agent.status = AgentStatus.THINKING
             agent.updated_at = _timestamp()
             self.save()
 
-            try:
-                response = await client.complete(messages)
+        try:
+            response = await client.complete(messages)
 
-                if (
-                    not isinstance(response, dict)
-                    or response.get("role") != "assistant"
-                ):
-                    raise ValueError(
-                        "LLM returned an invalid assistant message."
-                    )
+            if (
+                not isinstance(response, dict)
+                or response.get("role") != "assistant"
+            ):
+                raise ValueError(
+                    "LLM returned an invalid assistant message."
+                )
 
-            except Exception:
-                agent.status = AgentStatus.ERROR
-                agent.updated_at = _timestamp()
-                self.save()
-                raise
+        except asyncio.CancelledError:
+            async with self._lock:
+                if self.active_request_id == request_id:
+                    self.active_request_id = None
+                    self.active_request_civilization_id = None
+                    self.status = "interrupted"
+
+                    agent.status = AgentStatus.INTERRUPTED
+                    agent.updated_at = _timestamp()
+                    self.save()
+
+            raise
+
+        except Exception:
+            async with self._lock:
+                if self.active_request_id == request_id:
+                    self.active_request_id = None
+                    self.active_request_civilization_id = None
+
+                    agent.status = AgentStatus.ERROR
+                    agent.updated_at = _timestamp()
+                    self.save()
+
+            raise
+
+        async with self._lock:
+            if (
+                self.active_request_id != request_id
+                or self.active_request_civilization_id != civilization_id
+                or self.active_civilization_id != civilization_id
+                or self.status != "running"
+            ):
+                raise RuntimeError(
+                    "Discarded an LLM response from an inactive request."
+                )
 
             agent.messages.append(deepcopy(response))
             agent.status = AgentStatus.READY
             agent.updated_at = _timestamp()
 
-            self.civilization_histories[civilization.id] = (
+            self.civilization_histories[civilization_id] = (
                 deepcopy(agent.messages)
             )
 
-            self.save()
+            self.active_request_id = None
+            self.active_request_civilization_id = None
 
+            self.save()
             return response
 
     async def end_turn(self, years: int):
         async with self._lock:
             civilization = self.get_active_civilization()
 
+            if self.active_request_civilization_id == civilization.id:
+                raise ValueError(
+                    "Cannot end the turn while an LLM request is active."
+                )
+
             if self.pending_action is not None:
                 raise ValueError(
                     "Cannot end the turn while an action awaits a ruling."
+                )
+
+            agent = self.agent_states.get(civilization.id)
+
+            if agent is not None and agent.pending_tool_call_ids:
+                raise ValueError(
+                    "Cannot end the turn while tool calls are pending."
                 )
 
             wake_time = self.scheduler.sleep_civilization(
@@ -553,8 +759,6 @@ class NarratorRuntime:
                 civilization.id,
                 years,
             )
-
-            agent = self.agent_states.get(civilization.id)
 
             if agent is not None:
                 agent.status = AgentStatus.SLEEPING
@@ -572,7 +776,7 @@ class NarratorRuntime:
             }
 
     async def resume_interrupted(self):
-        """Resume a previously active civilization after process recovery."""
+        """Resume a civilization after recovering a previous process."""
 
         async with self._lock:
             if self.status != "interrupted":
@@ -590,16 +794,35 @@ class NarratorRuntime:
 
             civilization = self.get_active_civilization()
 
+            uncertain_calls = [
+                record.call_id
+                for record in self.tool_call_journal.values()
+                if (
+                    record.civilization_id == civilization.id
+                    and record.status == ToolCallStatus.UNCERTAIN
+                )
+            ]
+
+            if uncertain_calls:
+                raise ValueError(
+                    "Resolve uncertain tool calls before resuming: "
+                    + ", ".join(uncertain_calls)
+                )
+
             agent = self.agent_states.setdefault(
                 civilization.id,
                 AgentState(civilization_id=civilization.id),
             )
 
-            # Do not replay uncertain tool calls or pretend an old LLM
-            # request completed. Resume from the persisted conversation.
-            agent.status = AgentStatus.READY
+            agent.status = (
+                AgentStatus.WAITING_FOR_TOOL
+                if agent.pending_tool_call_ids
+                else AgentStatus.READY
+            )
             agent.updated_at = _timestamp()
 
+            self.active_request_id = None
+            self.active_request_civilization_id = None
             self.status = "running"
             self.save()
 
