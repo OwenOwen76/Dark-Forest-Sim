@@ -4,11 +4,13 @@ from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
+import json
 
 from ..engine.civilization import CivilizationStatus
 from ..engine.scheduler import CivilizationScheduler
 from ..engine.simulation import SimulationEngine
 from ..engine.universe import Universe
+from .civilization_mcp_client import CivilizationMCPClient
 from .persistence import SimulationPersistence
 from .registry import NarratorToolbox
 from .agents import AgentState, AgentStatus, ToolCallRecord, ToolCallStatus
@@ -616,7 +618,9 @@ class NarratorRuntime:
         agent.updated_at = _timestamp()
 
     async def run_agent_turn(self, client):
-        """Run one LLM response with protection against stale responses."""
+        """Run a complete civilization LLM and MCP tool interaction cycle."""
+
+        max_tool_rounds = 32
 
         async with self._lock:
             if self.status != "running":
@@ -663,75 +667,215 @@ class NarratorRuntime:
 
             messages.extend(deepcopy(agent.messages))
 
-            request_id = str(uuid4())
-
-            self.active_request_id = request_id
-            self.active_request_civilization_id = civilization_id
-
             agent.status = AgentStatus.THINKING
             agent.updated_at = _timestamp()
             self.save()
 
-        try:
-            response = await client.complete(messages)
+        mcp_client = CivilizationMCPClient()
 
-            if (
-                not isinstance(response, dict)
-                or response.get("role") != "assistant"
-            ):
-                raise ValueError(
-                    "LLM returned an invalid assistant message."
-                )
+        async with mcp_client.connect() as session:
+            tools = await mcp_client.get_openai_tools(session)
 
-        except asyncio.CancelledError:
-            async with self._lock:
-                if self.active_request_id == request_id:
-                    self.active_request_id = None
-                    self.active_request_civilization_id = None
-                    self.status = "interrupted"
+            for round_number in range(max_tool_rounds):
+                request_id = str(uuid4())
 
-                    agent.status = AgentStatus.INTERRUPTED
+                async with self._lock:
+                    if (
+                        self.status != "running"
+                        or self.active_civilization_id != civilization_id
+                    ):
+                        raise RuntimeError(
+                            "Civilization became inactive before "
+                            "the next LLM request."
+                        )
+
+                    if self.active_request_id is not None:
+                        raise ValueError(
+                            "Another LLM request is already active."
+                        )
+
+                    self.active_request_id = request_id
+                    self.active_request_civilization_id = civilization_id
+                    agent.status = AgentStatus.THINKING
                     agent.updated_at = _timestamp()
                     self.save()
 
-            raise
+                try:
+                    response = await client.complete(
+                        messages,
+                        tools=tools,
+                    )
 
-        except Exception:
-            async with self._lock:
-                if self.active_request_id == request_id:
+                    if (
+                        not isinstance(response, dict)
+                        or response.get("role") != "assistant"
+                    ):
+                        raise ValueError(
+                            "LLM returned an invalid assistant message."
+                        )
+
+                except asyncio.CancelledError:
+                    async with self._lock:
+                        if self.active_request_id == request_id:
+                            self.active_request_id = None
+                            self.active_request_civilization_id = None
+                            self.status = "interrupted"
+
+                            agent.status = AgentStatus.INTERRUPTED
+                            agent.updated_at = _timestamp()
+                            self.save()
+
+                    raise
+
+                except Exception:
+                    async with self._lock:
+                        if self.active_request_id == request_id:
+                            self.active_request_id = None
+                            self.active_request_civilization_id = None
+
+                            agent.status = AgentStatus.ERROR
+                            agent.updated_at = _timestamp()
+                            self.save()
+
+                    raise
+
+                async with self._lock:
+                    if (
+                        self.active_request_id != request_id
+                        or self.active_request_civilization_id
+                        != civilization_id
+                        or self.active_civilization_id
+                        != civilization_id
+                        or self.status != "running"
+                    ):
+                        raise RuntimeError(
+                            "Discarded an LLM response from "
+                            "an inactive request."
+                        )
+
                     self.active_request_id = None
                     self.active_request_civilization_id = None
 
-                    agent.status = AgentStatus.ERROR
+                    agent.messages.append(deepcopy(response))
+                    messages.append(deepcopy(response))
+
                     agent.updated_at = _timestamp()
+
+                    self.civilization_histories[civilization_id] = (
+                        deepcopy(agent.messages)
+                    )
+
                     self.save()
 
-            raise
+                tool_calls = response.get("tool_calls") or []
 
-        async with self._lock:
-            if (
-                self.active_request_id != request_id
-                or self.active_request_civilization_id != civilization_id
-                or self.active_civilization_id != civilization_id
-                or self.status != "running"
-            ):
-                raise RuntimeError(
-                    "Discarded an LLM response from an inactive request."
-                )
+                if not tool_calls:
+                    async with self._lock:
+                        agent.status = AgentStatus.READY
+                        agent.updated_at = _timestamp()
 
-            agent.messages.append(deepcopy(response))
-            agent.status = AgentStatus.READY
-            agent.updated_at = _timestamp()
+                        self.civilization_histories[civilization_id] = (
+                            deepcopy(agent.messages)
+                        )
 
-            self.civilization_histories[civilization_id] = (
-                deepcopy(agent.messages)
+                        self.save()
+
+                    return response
+
+                turn_ended = False
+
+                for tool_call in tool_calls:
+                    call_id = tool_call["id"]
+                    function = tool_call["function"]
+                    tool_name = function["name"]
+                    arguments = json.loads(function["arguments"])
+
+                    record = self.register_tool_call(
+                        call_id=call_id,
+                        civilization_id=civilization_id,
+                        tool_name=tool_name,
+                        arguments=arguments,
+                    )
+
+                    self.mark_tool_call_executing(record.call_id)
+
+                    try:
+                        result = await mcp_client.call_tool(
+                            session,
+                            tool_name,
+                            arguments,
+                        )
+
+                    except asyncio.CancelledError:
+                        async with self._lock:
+                            record.status = ToolCallStatus.UNCERTAIN
+                            record.updated_at = _timestamp()
+
+                            self._finish_tool_call(record)
+
+                            self.status = "interrupted"
+                            agent.status = AgentStatus.INTERRUPTED
+                            agent.updated_at = _timestamp()
+
+                            self.save()
+
+                        raise
+
+                    except Exception as exc:
+                        self.fail_tool_call(
+                            record.call_id,
+                            str(exc),
+                        )
+
+                        result = {
+                            "error": str(exc),
+                        }
+
+                    else:
+                        self.complete_tool_call(
+                            record.call_id,
+                            result,
+                        )
+
+                    tool_message = {
+                        "role": "tool",
+                        "tool_call_id": call_id,
+                        "content": json.dumps(
+                            result,
+                            ensure_ascii=False,
+                            default=str,
+                        ),
+                    }
+
+                    async with self._lock:
+                        agent.messages.append(deepcopy(tool_message))
+                        messages.append(deepcopy(tool_message))
+
+                        self.civilization_histories[civilization_id] = (
+                            deepcopy(agent.messages)
+                        )
+
+                        agent.updated_at = _timestamp()
+                        self.save()
+
+                    if tool_name == "time_lapse" and "error" not in (
+                        result if isinstance(result, dict) else {}
+                    ):
+                        turn_ended = True
+                        break
+
+                if turn_ended:
+                    return response
+
+            async with self._lock:
+                agent.status = AgentStatus.ERROR
+                agent.updated_at = _timestamp()
+                self.save()
+
+            raise RuntimeError(
+                f"Civilization exceeded the maximum of "
+                f"{max_tool_rounds} consecutive tool-call rounds."
             )
-
-            self.active_request_id = None
-            self.active_request_civilization_id = None
-
-            self.save()
-            return response
 
     async def end_turn(self, years: int):
         async with self._lock:
