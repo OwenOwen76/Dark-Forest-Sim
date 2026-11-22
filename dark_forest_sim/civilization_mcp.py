@@ -73,14 +73,7 @@ async def api_request(
     return response.json()
 
 
-async def get_active_civilization_id() -> str:
-    """
-    Get the identity of the currently active civilization.
-
-    The runtime permits only one active civilization at a time.
-    Document access is always resolved against that civilization.
-    """
-
+async def get_civilization_id() -> str:
     context = await api_request(
         "GET",
         "/api/civilization/context",
@@ -101,21 +94,8 @@ async def get_active_civilization_id() -> str:
 # ---------------------------------------------------------------------------
 
 async def get_civilization_workspace() -> Path:
-    """
-    Resolve the active civilization's private document workspace.
+    civilization_id = await get_civilization_id()
 
-    Workspace layout:
-
-        project_space/
-            civilization-<id>/
-                ...
-
-    The civilization ID comes from the runtime, never from an LLM argument.
-    """
-
-    civilization_id = await get_active_civilization_id()
-
-    # Civilization IDs must be single path components.
     if (
         civilization_id in {".", ".."}
         or "/" in civilization_id
@@ -123,7 +103,7 @@ async def get_civilization_workspace() -> Path:
         or "\x00" in civilization_id
     ):
         raise RuntimeError(
-            "The active civilization has an invalid workspace ID."
+            "The civilization ID cannot be used as a workspace name."
         )
 
     PROJECT_SPACE.mkdir(
@@ -141,12 +121,12 @@ async def get_civilization_workspace() -> Path:
 
     if not resolved_workspace.is_relative_to(PROJECT_SPACE):
         raise RuntimeError(
-            "Civilization workspace escaped the project space."
+            "Civilization workspace is outside the project space."
         )
 
     if resolved_workspace.is_symlink():
         raise RuntimeError(
-            "Civilization workspace cannot be a symbolic link."
+            "Civilization workspace is not a valid document workspace."
         )
 
     return resolved_workspace
@@ -158,12 +138,6 @@ def resolve_document_path(
     *,
     allow_workspace_root: bool = False,
 ) -> Path:
-    """
-    Resolve a document path while preventing access outside the workspace.
-
-    Absolute paths, parent traversal, and symbolic links are rejected.
-    """
-
     if not isinstance(relative_path, str):
         raise ValueError("Document path must be a string.")
 
@@ -176,17 +150,16 @@ def resolve_document_path(
     path = Path(relative_path)
 
     if path.is_absolute():
-        raise ValueError("Absolute document paths are not allowed.")
+        raise ValueError("Document path must be relative.")
 
     if ".." in path.parts:
-        raise ValueError("Parent-directory traversal is not allowed.")
+        raise ValueError("Document path cannot contain parent-directory traversal.")
 
     if path == Path(".") and not allow_workspace_root:
-        raise ValueError("A document path must identify a file or folder.")
+        raise ValueError("Document path must identify a file or folder.")
 
     candidate = workspace / path
 
-    # Reject symbolic links in every existing path component.
     current = workspace
 
     for component in path.parts:
@@ -196,16 +169,12 @@ def resolve_document_path(
         current = current / component
 
         if current.is_symlink():
-            raise ValueError(
-                "Symbolic links are not allowed in document paths."
-            )
+            raise ValueError("Document path contains a symbolic link.")
 
     resolved = candidate.resolve()
 
     if not resolved.is_relative_to(workspace):
-        raise ValueError(
-            "Document path escapes the civilization workspace."
-        )
+        raise ValueError("Document path is outside the workspace.")
 
     return resolved
 
@@ -220,13 +189,6 @@ def build_document_tree(
     max_entries: int = MAX_DOCUMENT_TREE_ENTRIES,
     max_depth: int = MAX_DOCUMENT_TREE_DEPTH,
 ) -> str:
-    """
-    Generate a tree-style directory listing using Python filesystem APIs.
-
-    This deliberately does not invoke the ls or tree shell commands.
-    Symbolic links are displayed but never followed.
-    """
-
     lines = [root.name]
     entry_count = 0
     truncated = False
@@ -254,7 +216,6 @@ def build_document_tree(
             )
             return
 
-        # Directories first, then files; alphabetical within each group.
         entries.sort(
             key=lambda entry: (
                 not entry.is_dir(follow_symlinks=False),
@@ -318,11 +279,11 @@ def build_document_tree(
 
 @mcp.tool(
     description=(
-        "Inspect your own civilization's identity, local year, "
+        "Inspect your civilization's current identity, local year, "
         "status, position, and resources."
     )
 )
-async def inspect_self() -> dict:
+async def inspect_civilization() -> dict:
     return await api_request(
         "GET",
         "/api/civilization/context",
@@ -331,8 +292,8 @@ async def inspect_self() -> dict:
 
 @mcp.tool(
     description=(
-        "Inspect events whose information has physically arrived "
-        "at your civilization. Events still travelling are excluded."
+        "Review information that has reached your civilization, "
+        "including received events and discoveries."
     )
 )
 async def inspect_knowledge() -> dict:
@@ -348,9 +309,9 @@ async def inspect_knowledge() -> dict:
 
 @mcp.tool(
     description=(
-        "Display a tree-style listing of your civilization's document "
-        "workspace. Optionally provide a relative folder path. "
-        "Use '.' or omit the path to list the entire workspace."
+        "List the documents and folders in your civilization's workspace "
+        "as a tree. Provide a folder path to inspect a specific part "
+        "of the workspace."
     )
 )
 async def list_doc(path: str = ".") -> dict:
@@ -380,8 +341,8 @@ async def list_doc(path: str = ".") -> dict:
 
 @mcp.tool(
     description=(
-        "Read a UTF-8 document from your civilization's workspace. "
-        "The path must be relative to your workspace."
+        "Read a document from your civilization's workspace "
+        "using its relative path."
     )
 )
 async def read_doc(path: str) -> dict:
@@ -410,8 +371,8 @@ async def read_doc(path: str) -> dict:
 
 @mcp.tool(
     description=(
-        "Overwrite an existing UTF-8 document in your civilization's "
-        "workspace. This tool does not create new files."
+        "Replace the contents of a document in your civilization's "
+        "workspace."
     )
 )
 async def write_doc(
@@ -427,7 +388,7 @@ async def write_doc(
 
     if not document.exists():
         raise FileNotFoundError(
-            f"Document does not exist. Use create_doc first: {path}"
+            f"Document does not exist: {path}"
         )
 
     if not document.is_file():
@@ -449,8 +410,8 @@ async def write_doc(
 
 @mcp.tool(
     description=(
-        "Create a new UTF-8 document in your civilization's workspace. "
-        "The file must not already exist, and its parent folder must exist."
+        "Create a new document in your civilization's workspace "
+        "with the supplied contents."
     )
 )
 async def create_doc(
@@ -474,7 +435,6 @@ async def create_doc(
             f"Parent folder does not exist: {document.parent}"
         )
 
-    # Exclusive creation prevents silently overwriting an existing file.
     with document.open(
         "x",
         encoding="utf-8",
@@ -490,8 +450,7 @@ async def create_doc(
 
 @mcp.tool(
     description=(
-        "Create a new folder in your civilization's document workspace. "
-        "Parent folders are created automatically when necessary."
+        "Create a new folder in your civilization's document workspace."
     )
 )
 async def create_doc_folder(path: str) -> dict:
@@ -518,7 +477,10 @@ async def create_doc_folder(path: str) -> dict:
 # ---------------------------------------------------------------------------
 
 @mcp.tool(
-    description="Calculate the distance between two 3D positions in light-years."
+    description=(
+        "Calculate the distance between two positions in three-dimensional "
+        "space, in light-years."
+    )
 )
 async def calculate_distance(
     x1: float,
@@ -540,8 +502,8 @@ async def calculate_distance(
 
 @mcp.tool(
     description=(
-        "Calculate travel time in years given a distance in light-years "
-        "and a travel speed in light-years per year."
+        "Calculate travel time from a distance and travel speed, "
+        "in years."
     )
 )
 async def calculate_travel_time(
@@ -564,7 +526,7 @@ async def calculate_travel_time(
 
 @mcp.tool(
     description=(
-        "Calculate the maximum distance at which a signal can be "
+        "Estimate the maximum distance at which a signal can be "
         "detected against background noise, in light-years."
     )
 )
@@ -585,7 +547,10 @@ async def calculate_signal_detection_range(
 
 
 @mcp.tool(
-    description="Calculate average waste heat output in watts."
+    description=(
+        "Calculate the average waste heat produced by energy use, "
+        "in watts."
+    )
 )
 async def calculate_waste_heat_power(
     energy_joules: float,
@@ -604,7 +569,10 @@ async def calculate_waste_heat_power(
 
 
 @mcp.tool(
-    description="Calculate infrared detection range in light-years."
+    description=(
+        "Estimate the infrared detection range of a heat source, "
+        "in light-years."
+    )
 )
 async def calculate_infrared_detection_range(
     heat_power_watts: float,
@@ -622,8 +590,8 @@ async def calculate_infrared_detection_range(
 
 @mcp.tool(
     description=(
-        "Calculate how long it takes to cool a given energy reserve, "
-        "in seconds."
+        "Calculate the time required to cool a given amount of thermal "
+        "energy at a specified cooling power, in seconds."
     )
 )
 async def calculate_cooling_duration(
@@ -643,7 +611,10 @@ async def calculate_cooling_duration(
 
 
 @mcp.tool(
-    description="Calculate signal travel time in years."
+    description=(
+        "Calculate the travel time of a signal over a given distance, "
+        "in years."
+    )
 )
 async def calculate_signal_travel_time(
     distance_light_years: float,
@@ -661,8 +632,8 @@ async def calculate_signal_travel_time(
 
 @mcp.tool(
     description=(
-        "Calculate the absolute arrival time of a signal "
-        "in simulation years."
+        "Calculate when a signal will arrive from its departure time, "
+        "distance, and propagation speed."
     )
 )
 async def calculate_signal_arrival_time(
@@ -705,8 +676,8 @@ async def calculate_lorentz_factor(
 
 @mcp.tool(
     description=(
-        "Calculate relativistic travel time in the universe "
-        "reference frame, in years."
+        "Calculate travel time in the universe reference frame "
+        "for relativistic travel, in years."
     )
 )
 async def calculate_relativistic_travel_time(
@@ -725,7 +696,8 @@ async def calculate_relativistic_travel_time(
 
 @mcp.tool(
     description=(
-        "Calculate time experienced aboard a relativistic ship, in years."
+        "Calculate the time experienced aboard a relativistic "
+        "spacecraft during a journey, in years."
     )
 )
 async def calculate_proper_travel_time(
@@ -744,8 +716,8 @@ async def calculate_proper_travel_time(
 
 @mcp.tool(
     description=(
-        "Calculate relativistic kinetic energy in joules "
-        "for a given rest mass and speed."
+        "Calculate relativistic kinetic energy from rest mass "
+        "and speed, in joules."
     )
 )
 async def calculate_relativistic_kinetic_energy(
@@ -764,8 +736,8 @@ async def calculate_relativistic_kinetic_energy(
 
 @mcp.tool(
     description=(
-        "Calculate relativistic momentum in kg·m/s "
-        "for a given rest mass and speed."
+        "Calculate relativistic momentum from rest mass and speed, "
+        "in kg·m/s."
     )
 )
 async def calculate_relativistic_momentum(
@@ -788,8 +760,8 @@ async def calculate_relativistic_momentum(
 
 @mcp.tool(
     description=(
-        "Calculate energy demand, surplus, and deficit "
-        "for a civilization."
+        "Calculate your civilization's energy demand, surplus, "
+        "and deficit from population and energy consumption."
     )
 )
 async def calculate_energy_budget(
@@ -806,7 +778,8 @@ async def calculate_energy_budget(
 
 @mcp.tool(
     description=(
-        "Calculate future population using compound annual growth."
+        "Project your civilization's future population using "
+        "an annual compound growth rate."
     )
 )
 async def calculate_population_growth(
@@ -830,8 +803,8 @@ async def calculate_population_growth(
 
 @mcp.tool(
     description=(
-        "Calculate the energy production in watts associated "
-        "with a given Kardashev scale."
+        "Calculate the energy production associated with "
+        "a given Kardashev scale."
     )
 )
 async def calculate_kardashev_energy_output(
@@ -853,8 +826,8 @@ async def calculate_kardashev_energy_output(
 
 @mcp.tool(
     description=(
-        "Propose an action to the narrator. The narrator must approve "
-        "or reject the proposal before the call completes."
+        "Propose an action for your civilization to undertake. "
+        "The proposal is sent to the simulation for resolution."
     )
 )
 async def propose_action(description: str) -> dict:
@@ -873,8 +846,8 @@ async def propose_action(description: str) -> dict:
 
 @mcp.tool(
     description=(
-        "End your current turn and sleep for the specified positive "
-        "integer number of local years."
+        "End your current turn and wait for the specified number "
+        "of local years."
     )
 )
 async def time_lapse(years: int) -> dict:
