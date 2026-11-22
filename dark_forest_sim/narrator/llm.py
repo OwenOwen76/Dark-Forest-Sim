@@ -19,9 +19,22 @@ class OpenAICompatibleClient:
         self._http_client = http_client
         self._owns_client = http_client is None
 
-    async def complete(self, messages: list[dict]) -> dict:
+    async def complete(
+        self,
+        messages: list[dict],
+        tools: list[dict] | None = None,
+    ) -> dict:
         if self._http_client is None:
             self._http_client = httpx.AsyncClient(timeout=120.0)
+
+        payload = {
+            "model": self.model,
+            "messages": messages,
+        }
+
+        if tools:
+            payload["tools"] = tools
+            payload["tool_choice"] = "auto"
 
         response = await self._http_client.post(
             f"{self.base_url}/chat/completions",
@@ -29,10 +42,7 @@ class OpenAICompatibleClient:
                 "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json",
             },
-            json={
-                "model": self.model,
-                "messages": messages,
-            },
+            json=payload,
         )
 
         response.raise_for_status()
@@ -76,7 +86,10 @@ class OpenAICompatibleClient:
             if not isinstance(tool_call, dict):
                 raise ValueError("Invalid assistant tool call.")
 
-            if not isinstance(tool_call.get("id"), str) or not tool_call["id"]:
+            if (
+                not isinstance(tool_call.get("id"), str)
+                or not tool_call["id"]
+            ):
                 raise ValueError("Tool call ID must be a non-empty string.")
 
             function = tool_call.get("function")
@@ -98,10 +111,14 @@ class OpenAICompatibleClient:
             try:
                 parsed_arguments = json.loads(arguments)
             except json.JSONDecodeError as exc:
-                raise ValueError("Tool call arguments contain invalid JSON.") from exc
+                raise ValueError(
+                    "Tool call arguments contain invalid JSON."
+                ) from exc
 
             if not isinstance(parsed_arguments, dict):
-                raise ValueError("Tool call arguments must decode to an object.")
+                raise ValueError(
+                    "Tool call arguments must decode to an object."
+                )
 
         if not content and not reasoning and not tool_calls:
             raise ValueError("Assistant returned an empty message.")
