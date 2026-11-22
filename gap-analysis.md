@@ -1,6 +1,6 @@
 # Dark Forest Sim — Implementation Gap Analysis
 
-**Architecture reference:** `sim-architecture.md`  
+**Architecture reference:** `architecture.md`  
 **Repository:** `OwenOwen76/Dark-Forest-Sim`  
 **Reviewed:** November 21, 2026
 
