@@ -1,38 +1,76 @@
+import asyncio
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from . import data
 from .runtime import NarratorRuntime
 
-from . import data
 
-router = APIRouter(prefix="/api/narrator", tags=["narrator"])
+router = APIRouter(
+    prefix="/api/narrator",
+    tags=["narrator"],
+)
 
 
 class ToolCallRequest(BaseModel):
     tool: str
-    arguments: dict[str, Any] = Field(default_factory=dict)
+    arguments: dict[str, Any] = Field(
+        default_factory=dict
+    )
+
 
 class ToolCallResolutionRequest(BaseModel):
     outcome: str
     result: Any = None
     error: str | None = None
 
-def get_runtime(request: Request) -> NarratorRuntime:
-    runtime = getattr(request.app.state, "narrator_runtime", None)
+
+def get_runtime(
+    request: Request,
+) -> NarratorRuntime:
+    runtime = getattr(
+        request.app.state,
+        "narrator_runtime",
+        None,
+    )
 
     if runtime is None:
         raise HTTPException(
             status_code=503,
-            detail="Narrator runtime is not initialized.",
+            detail=(
+                "Narrator runtime is not initialized."
+            ),
         )
 
     return runtime
 
 
+def get_civilization_llm_client(
+    request: Request,
+):
+    client = getattr(
+        request.app.state,
+        "civilization_llm_client",
+        None,
+    )
+
+    if client is None:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Civilization LLM client is not initialized."
+            ),
+        )
+
+    return client
+
+
 @router.get("/tools")
-async def get_tools(request: Request):
+async def get_tools(
+    request: Request,
+):
     runtime = get_runtime(request)
 
     return {
@@ -54,15 +92,21 @@ async def call_tool(
 
 
 @router.get("/state")
-async def get_state(request: Request):
+async def get_state(
+    request: Request,
+):
     runtime = get_runtime(request)
 
-    return data.get_universe_status(runtime.universe)
+    return data.get_universe_status(
+        runtime.universe
+    )
+
 
 civilization_router = APIRouter(
     prefix="/api/civilization",
     tags=["civilization"],
 )
+
 
 class ActivateRequest(BaseModel):
     civilization_id: str
@@ -82,6 +126,10 @@ class TimeLapseRequest(BaseModel):
     years: int
 
 
+class CivilizationResponseRequest(BaseModel):
+    content: str
+
+
 @router.post("/activate")
 async def activate_civilization(
     body: ActivateRequest,
@@ -90,15 +138,32 @@ async def activate_civilization(
     runtime = get_runtime(request)
 
     try:
-        return await runtime.activate_civilization(body.civilization_id)
-    except (ValueError, KeyError, TypeError) as exc:
-        raise HTTPException(status_code=409, detail=str(exc))
+        return await runtime.activate_civilization(
+            body.civilization_id
+        )
+
+    except (
+        ValueError,
+        KeyError,
+        TypeError,
+    ) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=str(exc),
+        ) from exc
 
 
 @router.get("/pending-action")
-async def get_pending_action(request: Request):
+async def get_pending_action(
+    request: Request,
+):
     runtime = get_runtime(request)
-    return {"pending_action": runtime.pending_action}
+
+    return {
+        "pending_action": (
+            runtime.pending_action
+        ),
+    }
 
 
 @router.post("/resolve-action")
@@ -114,18 +179,36 @@ async def resolve_action(
             body.approved,
             body.explanation,
         )
-    except (ValueError, KeyError, TypeError) as exc:
-        raise HTTPException(status_code=409, detail=str(exc))
+
+    except (
+        ValueError,
+        KeyError,
+        TypeError,
+    ) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=str(exc),
+        ) from exc
 
 
 @civilization_router.get("/context")
-async def get_civilization_context(request: Request):
+async def get_civilization_context(
+    request: Request,
+):
     runtime = get_runtime(request)
 
     try:
         return runtime.civilization_context()
-    except (ValueError, KeyError, TypeError) as exc:
-        raise HTTPException(status_code=409, detail=str(exc))
+
+    except (
+        ValueError,
+        KeyError,
+        TypeError,
+    ) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=str(exc),
+        ) from exc
 
 
 @civilization_router.post("/action")
@@ -136,9 +219,19 @@ async def civilization_action(
     runtime = get_runtime(request)
 
     try:
-        return await runtime.submit_action(body.description)
-    except (ValueError, KeyError, TypeError) as exc:
-        raise HTTPException(status_code=409, detail=str(exc))
+        return await runtime.submit_action(
+            body.description
+        )
+
+    except (
+        ValueError,
+        KeyError,
+        TypeError,
+    ) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=str(exc),
+        ) from exc
 
 
 @civilization_router.post("/time-lapse")
@@ -149,22 +242,48 @@ async def civilization_time_lapse(
     runtime = get_runtime(request)
 
     try:
-        return await runtime.end_turn(body.years)
-    except (ValueError, KeyError, TypeError) as exc:
-        raise HTTPException(status_code=409, detail=str(exc))
+        return await runtime.end_turn(
+            body.years
+        )
+
+    except (
+        ValueError,
+        KeyError,
+        TypeError,
+    ) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=str(exc),
+        ) from exc
+
 
 @civilization_router.get("/knowledge")
-async def get_civilization_knowledge(request: Request):
+async def get_civilization_knowledge(
+    request: Request,
+):
     runtime = get_runtime(request)
 
     try:
         return {
-            "known_events": runtime.civilization_knowledge(),
+            "known_events": (
+                runtime.civilization_knowledge()
+            ),
         }
-    except (ValueError, KeyError, TypeError) as exc:
-        raise HTTPException(status_code=409, detail=str(exc))
 
-@civilization_router.post("/tool-calls/{call_id}/resolve")
+    except (
+        ValueError,
+        KeyError,
+        TypeError,
+    ) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=str(exc),
+        ) from exc
+
+
+@civilization_router.post(
+    "/tool-calls/{call_id}/resolve"
+)
 async def resolve_uncertain_tool_call(
     call_id: str,
     body: ToolCallResolutionRequest,
@@ -173,23 +292,160 @@ async def resolve_uncertain_tool_call(
     runtime = get_runtime(request)
 
     try:
-        record = runtime.resolve_uncertain_tool_call(
-            call_id,
-            body.outcome,
-            body.result,
-            body.error,
+        record = (
+            runtime.resolve_uncertain_tool_call(
+                call_id,
+                body.outcome,
+                body.result,
+                body.error,
+            )
         )
+
         return record.to_dict()
 
-    except (ValueError, KeyError, TypeError) as exc:
-        raise HTTPException(status_code=409, detail=str(exc))
+    except (
+        ValueError,
+        KeyError,
+        TypeError,
+    ) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=str(exc),
+        ) from exc
+
+
+# ------------------------------------------------------------------
+# Civilization runtime controls
+# ------------------------------------------------------------------
+
+
+@civilization_router.post("/run")
+async def run_civilization_simulation(
+    request: Request,
+):
+    runtime = get_runtime(request)
+    client = get_civilization_llm_client(
+        request
+    )
+
+    try:
+        return await runtime.start_simulation(
+            client
+        )
+
+    except (
+        ValueError,
+        KeyError,
+        TypeError,
+    ) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=str(exc),
+        ) from exc
+
+
+@civilization_router.post("/pause")
+async def pause_civilization_simulation(
+    request: Request,
+):
+    runtime = get_runtime(request)
+
+    try:
+        return await runtime.request_pause()
+
+    except (
+        ValueError,
+        KeyError,
+        TypeError,
+    ) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=str(exc),
+        ) from exc
+
+
+@civilization_router.post("/suspend")
+async def suspend_civilization_simulation(
+    request: Request,
+):
+    runtime = get_runtime(request)
+
+    try:
+        return await runtime.request_suspend()
+
+    except (
+        ValueError,
+        KeyError,
+        TypeError,
+    ) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=str(exc),
+        ) from exc
+
+
+@civilization_router.post("/terminate")
+async def terminate_civilization_simulation(
+    request: Request,
+):
+    runtime = get_runtime(request)
+
+    try:
+        return await runtime.request_terminate()
+
+    except (
+        ValueError,
+        KeyError,
+        TypeError,
+    ) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=str(exc),
+        ) from exc
+
+
+@civilization_router.post("/respond")
+async def respond_to_civilization(
+    body: CivilizationResponseRequest,
+    request: Request,
+):
+    runtime = get_runtime(request)
+    client = get_civilization_llm_client(
+        request
+    )
+
+    try:
+        return await runtime.submit_civilization_response(
+            body.content,
+            client,
+        )
+
+    except (
+        ValueError,
+        KeyError,
+        TypeError,
+    ) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=str(exc),
+        ) from exc
 
 
 @civilization_router.post("/resume")
-async def resume_runtime(request: Request):
+async def resume_runtime(
+    request: Request,
+):
     runtime = get_runtime(request)
 
     try:
         return await runtime.resume_interrupted()
-    except (ValueError, KeyError, TypeError) as exc:
-        raise HTTPException(status_code=409, detail=str(exc))
+
+    except (
+        ValueError,
+        KeyError,
+        TypeError,
+    ) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=str(exc),
+        ) from exc
